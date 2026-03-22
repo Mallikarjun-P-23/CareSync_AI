@@ -69,6 +69,7 @@ async def initiate_outbound_call(
         "facility_address": facility_address or "",
         "facility_phone_number": facility_phone_number or "",
         "call_reason": call_reason or "recent lab results",
+        "reason": call_reason or "recent lab results",
         "available_slots": available_slots or "Monday at 10:00 AM, Wednesday at 2:00 PM, or Friday at 9:00 AM",
         **(extra_context or {}),
     }
@@ -100,6 +101,13 @@ async def initiate_outbound_call(
         raise RuntimeError(f"ElevenLabs API error {resp.status_code}: {body}")
 
     data = resp.json()
+    
+    # ElevenLabs sometimes wraps Twilio errors in HTTP 200 responses
+    if data.get("success") is False:
+        msg = data.get("message", "Unknown Twilio/ElevenLabs error")
+        logger.error("ElevenLabs call failed underlying validation: %s", msg)
+        raise RuntimeError(f"ElevenLabs setup failure: {msg}")
+
     logger.info(
         "ElevenLabs call initiated — conversation_id=%s, callSid=%s",
         data.get("conversation_id"),
@@ -121,3 +129,55 @@ async def get_conversation(conversation_id: str) -> dict[str, Any]:
         raise RuntimeError(f"ElevenLabs error {resp.status_code}: {resp.text}")
 
     return resp.json()
+
+
+async def list_recent_conversations(page_size: int = 10) -> list[dict[str, Any]]:
+    """
+    Fetch the most recent conversations for the configured agent.
+    Used to find the conversation_id for a call that didn't return one immediately.
+    """
+    url = f"{ELEVENLABS_BASE}/convai/conversations"
+    headers = {"xi-api-key": settings.elevenlabs_api_key}
+    params: dict[str, Any] = {"page_size": page_size}
+    if settings.elevenlabs_agent_id:
+        params["agent_id"] = settings.elevenlabs_agent_id
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.get(url, headers=headers, params=params)
+
+    if resp.status_code >= 400:
+        logger.error("ElevenLabs list conversations error: %s", resp.text)
+        return []
+
+    data = resp.json()
+    # API returns {"conversations": [...]} or a list directly
+    if isinstance(data, dict):
+        return data.get("conversations", [])
+    return data if isinstance(data, list) else []
+
+
+async def get_conversation_by_call_sid(call_sid: str) -> str | None:
+    """
+    Look up the ElevenLabs conversation_id by Twilio callSid.
+
+    ElevenLabs stores the callSid as metadata on the conversation.
+    We fetch the most recent conversations and match on it.
+    Returns the conversation_id string, or None if not found yet.
+    """
+    try:
+        convos = await list_recent_conversations(page_size=20)
+        for convo in convos:
+            # The callSid may appear in metadata.twilio_sid or directly
+            meta = convo.get("metadata", {}) or {}
+            if (
+                meta.get("twilio_call_sid") == call_sid
+                or meta.get("callSid") == call_sid
+                or convo.get("call_sid") == call_sid
+            ):
+                cid = convo.get("conversation_id") or convo.get("id")
+                if cid:
+                    logger.info("Resolved callSid %s → conversation_id %s", call_sid, cid)
+                    return cid
+    except Exception as exc:
+        logger.warning("get_conversation_by_call_sid failed: %s", exc)
+    return None

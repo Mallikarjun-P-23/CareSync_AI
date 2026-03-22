@@ -522,7 +522,7 @@ async def _auto_poll_call_result(log_id: str, max_attempts: int = 40, interval: 
 
     This replaces the need to manually call POST /api/call-logs/{id}/check.
     """
-    from app.services.elevenlabs_service import get_conversation
+    from app.services.elevenlabs_service import get_conversation, get_conversation_by_call_sid
     from app.services.google_calendar_service import create_calendar_event
 
     logger.info("Auto-poll started for call_log %s (max %d attempts, %ds interval)", log_id, max_attempts, interval)
@@ -542,16 +542,39 @@ async def _auto_poll_call_result(log_id: str, max_attempts: int = 40, interval: 
 
             # Find conversation_id from execution_log
             conversation_id = None
+            call_sid = None
             exec_log = call_log.get("execution_log") or []
             for step in exec_log:
                 if step.get("conversation_id"):
                     conversation_id = step["conversation_id"]
                     break
+                # Also pick up callSid — set by workflow_engine when
+                # ElevenLabs doesn't return conversation_id immediately
+                if not call_sid and step.get("call_sid"):
+                    call_sid = step["call_sid"]
+
+            # If we have a callSid but no conversation_id yet, try to
+            # resolve it by querying ElevenLabs' conversation list
+            if not conversation_id and call_sid:
+                logger.info("Auto-poll attempt %d: resolving conversation_id from callSid %s", attempt, call_sid)
+                conversation_id = await get_conversation_by_call_sid(call_sid)
+                if conversation_id:
+                    # Persist it in the execution log so future iterations skip this step
+                    exec_log.append({
+                        "node_id": "elevenlabs_id_resolved",
+                        "node_type": "internal",
+                        "label": "conversation_id resolved",
+                        "status": "ok",
+                        "conversation_id": conversation_id,
+                        "call_sid": call_sid,
+                    })
+                    db.update_call_log(log_id, {"execution_log": exec_log})
 
             if not conversation_id:
                 logger.info("Auto-poll attempt %d: no conversation_id yet, waiting...", attempt)
                 await asyncio.sleep(interval)
                 continue
+
 
             # Poll ElevenLabs
             conversation = await get_conversation(conversation_id)
@@ -941,9 +964,43 @@ async def elevenlabs_webhook(request: Request):
     doctor and updates the call_log.
     """
     from app.services.google_calendar_service import create_calendar_event
+    from app.core.config import settings
+    import hashlib
+    import hmac
+    from fastapi.responses import JSONResponse
 
-    payload = await request.json()
+    # ---- Signature verification ----
+    # Read raw bytes first (needed for correct HMAC computation)
+    raw_body = await request.body()
+
+    webhook_secret = settings.elevenlabs_webhook_secret
+    if webhook_secret:
+        sig_header = request.headers.get("ElevenLabs-Signature", "")
+        # Header format: "t=<timestamp>,v0=<hmac_hex>"
+        try:
+            parts = dict(item.split("=", 1) for item in sig_header.split(",") if "=" in item)
+            timestamp = parts.get("t", "")
+            received_sig = parts.get("v0", "")
+            # ElevenLabs signs: timestamp + "." + raw_body
+            signed_payload = f"{timestamp}.".encode() + raw_body
+            expected_sig = hmac.new(
+                webhook_secret.encode(),
+                signed_payload,
+                hashlib.sha256,
+            ).hexdigest()
+            if not hmac.compare_digest(expected_sig, received_sig):
+                logger.warning("ElevenLabs webhook: invalid signature")
+                return JSONResponse(status_code=401, content={"error": "invalid signature"})
+        except Exception as sig_exc:
+            logger.warning("ElevenLabs webhook: signature check failed: %s", sig_exc)
+            return JSONResponse(status_code=401, content={"error": "signature verification failed"})
+    else:
+        logger.warning("ELEVENLABS_WEBHOOK_SECRET not set — skipping signature verification")
+
+    import json as _json
+    payload = _json.loads(raw_body)
     logger.info("ElevenLabs webhook received: type=%s", payload.get("type"))
+
 
     # ---- extract conversation_id ----
     conversation_id = payload.get("conversation_id") or payload.get("data", {}).get("conversation_id")
