@@ -44,23 +44,23 @@ Definition of Done
 Timebox: 0:15 to 1:10
 
 Checklist
-- [ ] Backend DB helpers in `backend/app/services/supabase_service.py`
-	- [ ] list doctors (with filters)
-	- [ ] list doctor availability
-	- [ ] reserve slot
-- [ ] Backend APIs in `backend/app/api/endpoints.py`
-	- [ ] `GET /api/doctors`
-	- [ ] `GET /api/doctors/{doctor_id}/availability`
-	- [ ] `POST /api/slots/{slot_id}/reserve`
-- [ ] Frontend API client functions in `frontend/services/api.ts`
-- [ ] Patient-facing doctor directory page (public route)
-	- [ ] Filter by specialty/language/consultation type
-	- [ ] Show `Available now` or `Next slot`
+- [x] Backend DB helpers in `backend/app/services/supabase_service.py`
+	- [x] list doctors (with filters)
+	- [x] list doctor availability
+	- [x] reserve slot
+- [x] Backend APIs in `backend/app/api/endpoints.py`
+	- [x] `GET /api/doctors`
+	- [x] `GET /api/doctors/{doctor_id}/availability`
+	- [x] `POST /api/slots/{slot_id}/reserve`
+- [x] Frontend API client functions in `frontend/services/api.ts`
+- [x] Patient-facing doctor directory page (public route)
+	- [x] Filter by specialty/language/consultation type
+	- [x] Show `Available now` or `Next slot`
 
 Definition of Done
-- [ ] Doctor list renders from backend
-- [ ] Availability endpoint returns slots correctly
-- [ ] Reserve slot endpoint updates slot status
+- [x] Doctor list renders from backend
+- [x] Availability endpoint returns slots correctly
+- [x] Reserve slot endpoint updates slot status
 
 ---
 
@@ -68,18 +68,18 @@ Definition of Done
 Timebox: 1:10 to 2:00
 
 Checklist
-- [ ] Create booking flow page with date-time picker
-- [ ] Implement atomic booking flow:
-	- [ ] Reserve slot
-	- [ ] Create appointment row
-	- [ ] Mark slot as booked
-- [ ] Add confirmation notification creation at booking time
-- [ ] Add success/failure states on UI
+- [x] Create booking flow page with date-time picker
+- [x] Implement atomic booking flow:
+	- [x] Reserve slot
+	- [x] Create appointment row
+	- [x] Mark slot as booked
+- [x] Add confirmation notification creation at booking time
+- [x] Add success/failure states on UI
 
 Definition of Done
-- [ ] User can book from available slot
-- [ ] Double-book attempt fails safely
-- [ ] Appointment and notification rows are created
+- [x] User can book from available slot
+- [x] Double-book attempt fails safely
+- [x] Appointment and notification rows are created
 
 ---
 

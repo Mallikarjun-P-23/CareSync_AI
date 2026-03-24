@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useAuth0 } from "@auth0/auth0-react";
+import { useLocalAuth } from "@/lib/local-auth";
 import {
   listWorkflows,
   deleteWorkflow,
@@ -32,7 +32,7 @@ export default function TriggersPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
-  const { user } = useAuth0();
+  const { user } = useLocalAuth();
   const doctorId = user?.sub;
 
   const fetchWorkflows = useCallback(async () => {

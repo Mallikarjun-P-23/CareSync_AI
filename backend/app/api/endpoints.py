@@ -18,6 +18,13 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _resolve_doctor_or_404(doctor_identifier: str) -> dict:
+    doctor = db.resolve_doctor(doctor_identifier)
+    if not doctor:
+        raise HTTPException(status_code=404, detail="Doctor not found")
+    return doctor
+
+
 # ---------------------------------------------------------------------------
 # Pydantic schemas
 # ---------------------------------------------------------------------------
@@ -111,11 +118,61 @@ class ExecuteRequest(BaseModel):
     trigger_node_type: str | None = None
 
 
+class AuthRegisterRequest(BaseModel):
+    role: str = Field(pattern="^(doctor|patient)$")
+    email: str
+    password: str = Field(min_length=6)
+    username: str
+    mobile: str
+
+
+class AuthLoginRequest(BaseModel):
+    role: str = Field(pattern="^(doctor|patient)$")
+    email: str
+    password: str
+
+
 class LabEventRequest(BaseModel):
     trigger_type: str           # e.g. "lab_results_received"
     patient_id: str
     doctor_id: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+# ---------------------------------------------------------------------------
+# Local auth APIs (doctor/patient email-password)
+# ---------------------------------------------------------------------------
+
+@router.post("/auth/register")
+async def auth_register(body: AuthRegisterRequest):
+    try:
+        return db.register_user_account(
+            role=body.role,
+            email=body.email,
+            password=body.password,
+            username=body.username,
+            mobile=body.mobile,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Registration failed role=%s email=%s", body.role, body.email)
+        raise HTTPException(status_code=500, detail=f"Registration failed: {exc}") from exc
+
+
+@router.post("/auth/login")
+async def auth_login(body: AuthLoginRequest):
+    try:
+        return db.login_user_account(
+            role=body.role,
+            email=body.email,
+            password=body.password,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Login failed role=%s email=%s", body.role, body.email)
+        raise HTTPException(status_code=500, detail=f"Login failed: {exc}") from exc
 
 
 # ---------------------------------------------------------------------------
@@ -159,6 +216,51 @@ class ReserveSlotResponse(BaseModel):
     slot_id: str
     status: str
     reserved_until: str | None = None
+
+
+class AvailabilitySlotCreateRequest(BaseModel):
+    slot_start: str
+    slot_end: str
+    status: str = "available"
+
+
+class AvailabilitySlotUpdateRequest(BaseModel):
+    slot_start: str | None = None
+    slot_end: str | None = None
+    status: str | None = None
+
+
+class PatientPortalRegisterRequest(BaseModel):
+    auth_user_id: str
+    email: str
+    name: str
+    phone: str
+    doctor_id: str
+
+
+class PatientPortalBookRequest(BaseModel):
+    auth_user_id: str
+    consultation_type: str = "video"
+    notes: str | None = None
+
+
+class PatientPortalCancelAppointmentRequest(BaseModel):
+    auth_user_id: str
+    reason: str | None = None
+
+
+class PatientPortalRescheduleAppointmentRequest(BaseModel):
+    auth_user_id: str
+    new_slot_id: str
+    consultation_type: str | None = None
+    notes: str | None = None
+
+
+class AppointmentDoctorUpdateRequest(BaseModel):
+    doctor_id: str
+    status: str | None = None
+    consultation_type: str | None = None
+    notes: str | None = None
 
 
 class CreateAppointmentRequest(BaseModel):
@@ -208,6 +310,278 @@ class FeedbackResponse(BaseModel):
     comment: str | None = None
     tags: list[str] = Field(default_factory=list)
     created_at: str
+
+
+# ---------------------------------------------------------------------------
+# Doctor directory + availability (Phase 1)
+# ---------------------------------------------------------------------------
+
+@router.get("/doctors", response_model=list[DoctorListItem])
+async def list_doctors(
+    specialty: str | None = None,
+    language: str | None = None,
+    consultation_type: str | None = None,
+    available_now: bool | None = None,
+):
+    doctors = db.list_doctors(
+        specialty=specialty,
+        language=language,
+        consultation_type=consultation_type,
+        available_now=available_now,
+    )
+    return doctors
+
+
+@router.get("/doctors/{doctor_id}/availability", response_model=list[DoctorAvailabilitySlot])
+async def doctor_availability(doctor_id: str):
+    doctor = _resolve_doctor_or_404(doctor_id)
+    return db.list_doctor_availability(doctor["id"])
+
+
+@router.get("/doctors/{doctor_id}/slots")
+async def doctor_slots(
+    doctor_id: str,
+    include_past: bool = False,
+    status: str | None = None,
+):
+    doctor = _resolve_doctor_or_404(doctor_id)
+    return db.list_doctor_slots(doctor["id"], include_past=include_past, status=status)
+
+
+@router.post("/doctors/{doctor_id}/slots", status_code=201)
+async def create_doctor_slot(doctor_id: str, body: AvailabilitySlotCreateRequest):
+    doctor = _resolve_doctor_or_404(doctor_id)
+
+    try:
+        return db.create_doctor_slot(
+            doctor_id=doctor["id"],
+            slot_start=body.slot_start,
+            slot_end=body.slot_end,
+            status=body.status,
+        )
+    except Exception as exc:
+        logger.exception("Create slot failed for doctor_id=%s", doctor_id)
+        raise HTTPException(status_code=400, detail=f"Create slot failed: {exc}") from exc
+
+
+@router.put("/doctors/{doctor_id}/slots/{slot_id}")
+async def update_doctor_slot(doctor_id: str, slot_id: str, body: AvailabilitySlotUpdateRequest):
+    doctor = _resolve_doctor_or_404(doctor_id)
+    resolved_doctor_id = doctor["id"]
+
+    slot = db.get_availability_slot(slot_id)
+    if not slot or slot.get("doctor_id") != resolved_doctor_id:
+        raise HTTPException(status_code=404, detail="Slot not found")
+
+    payload = {k: v for k, v in body.model_dump().items() if v is not None}
+    if not payload:
+        return slot
+
+    if slot.get("status") == "booked" and any(k in payload for k in ("slot_start", "slot_end", "status")):
+        raise HTTPException(status_code=409, detail="Booked slots cannot be edited")
+
+    try:
+        return db.update_doctor_slot(resolved_doctor_id, slot_id, payload)
+    except Exception as exc:
+        logger.exception("Update slot failed slot_id=%s", slot_id)
+        raise HTTPException(status_code=400, detail=f"Update slot failed: {exc}") from exc
+
+
+@router.delete("/doctors/{doctor_id}/slots/{slot_id}", status_code=204)
+async def delete_doctor_slot(doctor_id: str, slot_id: str):
+    doctor = _resolve_doctor_or_404(doctor_id)
+    resolved_doctor_id = doctor["id"]
+
+    slot = db.get_availability_slot(slot_id)
+    if not slot or slot.get("doctor_id") != resolved_doctor_id:
+        raise HTTPException(status_code=404, detail="Slot not found")
+
+    if slot.get("status") == "booked":
+        raise HTTPException(status_code=409, detail="Booked slots cannot be deleted")
+
+    try:
+        db.delete_doctor_slot(resolved_doctor_id, slot_id)
+    except Exception as exc:
+        logger.exception("Delete slot failed slot_id=%s", slot_id)
+        raise HTTPException(status_code=400, detail=f"Delete slot failed: {exc}") from exc
+
+
+@router.post("/slots/{slot_id}/reserve", response_model=ReserveSlotResponse)
+async def reserve_slot(slot_id: str, body: ReserveSlotRequest):
+    patient = db.get_patient(body.patient_id)
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    try:
+        reserved = db.reserve_slot(
+            slot_id=slot_id,
+            patient_id=body.patient_id,
+            hold_minutes=body.hold_minutes,
+        )
+    except Exception as exc:
+        logger.exception("Slot reservation failed for slot_id=%s", slot_id)
+        raise HTTPException(status_code=500, detail=f"Slot reservation failed: {exc}") from exc
+
+    if not reserved:
+        raise HTTPException(
+            status_code=409,
+            detail="Slot is not available anymore. Please choose another slot.",
+        )
+
+    return {
+        "slot_id": reserved["id"],
+        "status": reserved["status"],
+        "reserved_until": reserved.get("reserved_until"),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Patient portal auth + dashboard APIs
+# ---------------------------------------------------------------------------
+
+@router.post("/patient-portal/register")
+async def register_patient_portal(body: PatientPortalRegisterRequest):
+    doctor = db.get_doctor(body.doctor_id)
+    if not doctor:
+        raise HTTPException(status_code=404, detail="Doctor not found")
+
+    try:
+        profile = db.register_patient_portal_user(
+            auth_user_id=body.auth_user_id,
+            email=body.email,
+            name=body.name,
+            phone=body.phone,
+            doctor_id=body.doctor_id,
+        )
+        return profile
+    except Exception as exc:
+        logger.exception("Patient portal registration failed")
+        raise HTTPException(status_code=500, detail=f"Registration failed: {exc}") from exc
+
+
+@router.get("/patient-portal/me")
+async def patient_portal_me(auth_user_id: str):
+    profile = db.get_patient_by_auth_user_id(auth_user_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Patient profile not found")
+    return profile
+
+
+@router.get("/patient-portal/appointments")
+async def patient_portal_appointments(auth_user_id: str):
+    profile = db.get_patient_by_auth_user_id(auth_user_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Patient profile not found")
+    return db.list_patient_appointments(profile["id"])
+
+
+@router.get("/appointments")
+async def doctor_appointments(doctor_id: str):
+    doctor = _resolve_doctor_or_404(doctor_id)
+    return db.list_doctor_appointments(doctor["id"])
+
+
+@router.put("/appointments/{appointment_id}")
+async def update_appointment(appointment_id: str, body: AppointmentDoctorUpdateRequest):
+    doctor = _resolve_doctor_or_404(body.doctor_id)
+    resolved_doctor_id = doctor["id"]
+
+    appointment = db.get_appointment(appointment_id)
+    if not appointment:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    if appointment.get("doctor_id") != resolved_doctor_id:
+        raise HTTPException(status_code=403, detail="Not allowed for this doctor")
+
+    payload = {
+        k: v
+        for k, v in {
+            "status": body.status,
+            "consultation_type": body.consultation_type,
+            "notes": body.notes,
+        }.items()
+        if v is not None
+    }
+    if not payload:
+        return appointment
+
+    try:
+        if payload.get("status") == "cancelled":
+            return db.cancel_appointment(appointment_id, cancel_note="Cancelled by doctor")
+        return db.update_appointment(appointment_id, payload)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Appointment update failed appointment_id=%s", appointment_id)
+        raise HTTPException(status_code=400, detail=f"Appointment update failed: {exc}") from exc
+
+
+@router.post("/patient-portal/slots/{slot_id}/book")
+async def patient_portal_book_slot(slot_id: str, body: PatientPortalBookRequest):
+    try:
+        booked = db.book_slot_for_patient_portal(
+            auth_user_id=body.auth_user_id,
+            slot_id=slot_id,
+            consultation_type=body.consultation_type,
+            notes=body.notes,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Patient booking failed for slot=%s", slot_id)
+        raise HTTPException(status_code=500, detail=f"Booking failed: {exc}") from exc
+
+    if not booked:
+        slot = db.get_availability_slot(slot_id)
+        if not slot:
+            raise HTTPException(status_code=404, detail="Slot not found")
+
+        status = slot.get("status")
+        if status == "booked":
+            raise HTTPException(status_code=409, detail="This slot is already booked")
+        if status == "reserved":
+            raise HTTPException(status_code=409, detail="This slot is currently reserved. Please try another slot")
+
+        raise HTTPException(status_code=409, detail="Slot could not be booked. Try another slot.")
+
+    return booked
+
+
+@router.post("/patient-portal/appointments/{appointment_id}/cancel")
+async def patient_portal_cancel_appointment(
+    appointment_id: str,
+    body: PatientPortalCancelAppointmentRequest,
+):
+    try:
+        return db.cancel_appointment_for_patient_portal(
+            auth_user_id=body.auth_user_id,
+            appointment_id=appointment_id,
+            reason=body.reason,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Patient cancel appointment failed appointment_id=%s", appointment_id)
+        raise HTTPException(status_code=400, detail=f"Cancel failed: {exc}") from exc
+
+
+@router.post("/patient-portal/appointments/{appointment_id}/reschedule")
+async def patient_portal_reschedule_appointment(
+    appointment_id: str,
+    body: PatientPortalRescheduleAppointmentRequest,
+):
+    try:
+        return db.reschedule_appointment_for_patient_portal(
+            auth_user_id=body.auth_user_id,
+            appointment_id=appointment_id,
+            new_slot_id=body.new_slot_id,
+            consultation_type=body.consultation_type,
+            notes=body.notes,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Patient reschedule appointment failed appointment_id=%s", appointment_id)
+        raise HTTPException(status_code=400, detail=f"Reschedule failed: {exc}") from exc
 
 
 # ---------------------------------------------------------------------------

@@ -6,7 +6,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 
-export default function SignIn() {
+export default function PatientSignInPage() {
   const { loginWithPassword, isLoading } = useLocalAuth();
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -19,8 +19,8 @@ export default function SignIn() {
     setSubmitting(true);
     setError(null);
     try {
-      await loginWithPassword({ role: "doctor", email, password });
-      router.push("/dashboard");
+      await loginWithPassword({ role: "patient", email, password });
+      router.push("/patient");
     } catch (err) {
       const text = err instanceof Error ? err.message : "Login failed";
       setError(text.replace(/^\{"detail":"|"\}$/g, ""));
@@ -36,7 +36,7 @@ export default function SignIn() {
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <h1 className="text-xl font-semibold">Doctor Login</h1>
+        <h1 className="text-xl font-semibold">Patient Login</h1>
         <p className="text-sm text-muted-foreground">Use your email and password.</p>
       </div>
 
@@ -64,7 +64,7 @@ export default function SignIn() {
       </Button>
 
       <p className="text-xs text-muted-foreground">
-        No account? <Link href="/signUp" className="underline">Create doctor account</Link>
+        No account? <Link href="/patient-signUp" className="underline">Create patient account</Link>
       </p>
     </form>
   );

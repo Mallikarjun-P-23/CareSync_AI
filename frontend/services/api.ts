@@ -2,6 +2,73 @@
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
+export interface DoctorListItem {
+  id: string;
+  name: string;
+  specialty: string;
+  language: string;
+  consultation_type: string;
+  fee: number;
+  rating_avg: number;
+  rating_count: number;
+  available_now: boolean;
+  next_slot_start: string | null;
+}
+
+export interface DoctorAvailabilitySlot {
+  id: string;
+  doctor_id: string;
+  slot_start: string;
+  slot_end: string;
+  status: string;
+}
+
+export interface DoctorManagedSlot extends DoctorAvailabilitySlot {
+  reserved_until?: string | null;
+  reserved_by?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface PatientPortalProfile {
+  id: string;
+  auth_user_id: string;
+  email: string;
+  name: string;
+  phone: string;
+  doctor_id: string;
+  created_at: string;
+}
+
+export interface PatientPortalAppointment {
+  id: string;
+  doctor_id: string;
+  patient_id: string;
+  slot_id: string;
+  status: string;
+  consultation_type: string;
+  created_at: string;
+  doctor_name?: string;
+  doctor_specialty?: string;
+  slot_start?: string;
+  slot_end?: string;
+}
+
+export interface DoctorAppointmentItem {
+  id: string;
+  doctor_id: string;
+  patient_id: string;
+  slot_id: string;
+  status: string;
+  consultation_type: string;
+  notes?: string | null;
+  created_at: string;
+  patient_name?: string;
+  patient_phone?: string;
+  slot_start?: string;
+  slot_end?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Lab event
 // ---------------------------------------------------------------------------
@@ -23,6 +90,244 @@ export async function simulateLabEvent(
     }),
   });
   return response.json();
+}
+
+// ---------------------------------------------------------------------------
+// Doctor directory + availability (Phase 1)
+// ---------------------------------------------------------------------------
+
+export async function listDoctors(filters?: {
+  specialty?: string;
+  language?: string;
+  consultation_type?: string;
+  available_now?: boolean;
+}) {
+  const params = new URLSearchParams();
+  if (filters?.specialty) params.set('specialty', filters.specialty);
+  if (filters?.language) params.set('language', filters.language);
+  if (filters?.consultation_type) params.set('consultation_type', filters.consultation_type);
+  if (typeof filters?.available_now === 'boolean') {
+    params.set('available_now', String(filters.available_now));
+  }
+
+  const qs = params.toString();
+  const response = await fetch(`${API_URL}/api/doctors${qs ? `?${qs}` : ''}`);
+  if (!response.ok) {
+    const detail = await response.text().catch(() => response.statusText);
+    throw new Error(`Failed to fetch doctors (${response.status}): ${detail}`);
+  }
+  return response.json() as Promise<DoctorListItem[]>;
+}
+
+export async function listDoctorAvailability(doctorId: string) {
+  const response = await fetch(`${API_URL}/api/doctors/${doctorId}/availability`);
+  if (!response.ok) {
+    const detail = await response.text().catch(() => response.statusText);
+    throw new Error(`Failed to fetch availability (${response.status}): ${detail}`);
+  }
+  return response.json() as Promise<DoctorAvailabilitySlot[]>;
+}
+
+export async function listDoctorSlots(
+  doctorId: string,
+  options?: { includePast?: boolean; status?: string },
+) {
+  const params = new URLSearchParams();
+  if (typeof options?.includePast === 'boolean') {
+    params.set('include_past', String(options.includePast));
+  }
+  if (options?.status) {
+    params.set('status', options.status);
+  }
+  const qs = params.toString();
+
+  const response = await fetch(`${API_URL}/api/doctors/${doctorId}/slots${qs ? `?${qs}` : ''}`);
+  if (!response.ok) {
+    const detail = await response.text().catch(() => response.statusText);
+    throw new Error(`Failed to fetch doctor slots (${response.status}): ${detail}`);
+  }
+  return response.json() as Promise<DoctorManagedSlot[]>;
+}
+
+export async function createDoctorSlot(
+  doctorId: string,
+  payload: { slot_start: string; slot_end: string; status?: string },
+) {
+  const response = await fetch(`${API_URL}/api/doctors/${doctorId}/slots`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => response.statusText);
+    throw new Error(`Failed to create slot (${response.status}): ${detail}`);
+  }
+  return response.json() as Promise<DoctorManagedSlot>;
+}
+
+export async function updateDoctorSlot(
+  doctorId: string,
+  slotId: string,
+  payload: { slot_start?: string; slot_end?: string; status?: string },
+) {
+  const response = await fetch(`${API_URL}/api/doctors/${doctorId}/slots/${slotId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => response.statusText);
+    throw new Error(`Failed to update slot (${response.status}): ${detail}`);
+  }
+  return response.json() as Promise<DoctorManagedSlot>;
+}
+
+export async function deleteDoctorSlot(doctorId: string, slotId: string) {
+  const response = await fetch(`${API_URL}/api/doctors/${doctorId}/slots/${slotId}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => response.statusText);
+    throw new Error(`Failed to delete slot (${response.status}): ${detail}`);
+  }
+}
+
+export async function reserveSlot(slotId: string, payload: { patient_id: string; hold_minutes?: number }) {
+  const response = await fetch(`${API_URL}/api/slots/${slotId}/reserve`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => response.statusText);
+    throw new Error(`Failed to reserve slot (${response.status}): ${detail}`);
+  }
+  return response.json();
+}
+
+export async function registerPatientPortal(payload: {
+  auth_user_id: string;
+  email: string;
+  name: string;
+  phone: string;
+  doctor_id: string;
+}) {
+  const response = await fetch(`${API_URL}/api/patient-portal/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => response.statusText);
+    throw new Error(`Failed to register patient profile (${response.status}): ${detail}`);
+  }
+  return response.json() as Promise<PatientPortalProfile>;
+}
+
+export async function getPatientPortalMe(authUserId: string) {
+  const params = new URLSearchParams({ auth_user_id: authUserId });
+  const response = await fetch(`${API_URL}/api/patient-portal/me?${params.toString()}`);
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    const detail = await response.text().catch(() => response.statusText);
+    throw new Error(`Failed to fetch patient profile (${response.status}): ${detail}`);
+  }
+  return response.json() as Promise<PatientPortalProfile>;
+}
+
+export async function listPatientPortalAppointments(authUserId: string) {
+  const params = new URLSearchParams({ auth_user_id: authUserId });
+  const response = await fetch(`${API_URL}/api/patient-portal/appointments?${params.toString()}`);
+  if (!response.ok) {
+    const detail = await response.text().catch(() => response.statusText);
+    throw new Error(`Failed to fetch appointments (${response.status}): ${detail}`);
+  }
+  return response.json() as Promise<PatientPortalAppointment[]>;
+}
+
+export async function bookPatientPortalSlot(
+  slotId: string,
+  payload: { auth_user_id: string; consultation_type?: string; notes?: string },
+) {
+  const response = await fetch(`${API_URL}/api/patient-portal/slots/${slotId}/book`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => response.statusText);
+    throw new Error(`Failed to book slot (${response.status}): ${detail}`);
+  }
+  return response.json() as Promise<PatientPortalAppointment>;
+}
+
+export async function listDoctorAppointments(doctorId: string) {
+  const params = new URLSearchParams({ doctor_id: doctorId });
+  const response = await fetch(`${API_URL}/api/appointments?${params.toString()}`);
+  if (!response.ok) {
+    const detail = await response.text().catch(() => response.statusText);
+    throw new Error(`Failed to fetch doctor appointments (${response.status}): ${detail}`);
+  }
+  return response.json() as Promise<DoctorAppointmentItem[]>;
+}
+
+export async function updateDoctorAppointment(
+  appointmentId: string,
+  payload: {
+    doctor_id: string;
+    status?: string;
+    consultation_type?: string;
+    notes?: string;
+  },
+) {
+  const response = await fetch(`${API_URL}/api/appointments/${appointmentId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => response.statusText);
+    throw new Error(`Failed to update appointment (${response.status}): ${detail}`);
+  }
+  return response.json() as Promise<DoctorAppointmentItem>;
+}
+
+export async function cancelPatientPortalAppointment(
+  appointmentId: string,
+  payload: { auth_user_id: string; reason?: string },
+) {
+  const response = await fetch(`${API_URL}/api/patient-portal/appointments/${appointmentId}/cancel`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => response.statusText);
+    throw new Error(`Failed to cancel appointment (${response.status}): ${detail}`);
+  }
+  return response.json() as Promise<PatientPortalAppointment>;
+}
+
+export async function reschedulePatientPortalAppointment(
+  appointmentId: string,
+  payload: {
+    auth_user_id: string;
+    new_slot_id: string;
+    consultation_type?: string;
+    notes?: string;
+  },
+) {
+  const response = await fetch(`${API_URL}/api/patient-portal/appointments/${appointmentId}/reschedule`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => response.statusText);
+    throw new Error(`Failed to reschedule appointment (${response.status}): ${detail}`);
+  }
+  return response.json() as Promise<PatientPortalAppointment>;
 }
 
 // ---------------------------------------------------------------------------

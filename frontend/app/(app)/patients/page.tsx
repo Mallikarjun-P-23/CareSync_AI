@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useAuth0 } from "@auth0/auth0-react";
+import { useLocalAuth } from "@/lib/local-auth";
 import { listPatients, createPatient, deletePatient } from "@/services/api";
 
 import Link from "next/link";
@@ -29,7 +29,7 @@ export default function PatientsPage() {
   const [savingPatient, setSavingPatient] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const { user } = useAuth0();
+  const { user } = useLocalAuth();
   const doctorId = user?.sub;
 
   const fetchPatients = useCallback(async () => {

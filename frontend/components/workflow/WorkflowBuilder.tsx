@@ -4,7 +4,7 @@ import '@xyflow/react/dist/style.css';
 
 import { useState, useCallback, useRef, useEffect, type DragEvent } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { useAuth0 } from '@auth0/auth0-react';
+import { useLocalAuth } from '@/lib/local-auth';
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -151,7 +151,7 @@ const EXAMPLE_EDGES: Edge[] = [
 
 function FlowContent() {
   const { screenToFlowPosition, fitView } = useReactFlow();
-  const { user } = useAuth0();
+  const { user } = useLocalAuth();
   const searchParams = useSearchParams();
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
@@ -189,6 +189,7 @@ function FlowContent() {
   const [showRunModal, setShowRunModal] = useState(false);
   const [patients, setPatients] = useState<any[]>([]);
   const [loadingPatients, setLoadingPatients] = useState(false);
+  const [patientsFallbackUsed, setPatientsFallbackUsed] = useState(false);
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [runStatus, setRunStatus] = useState<'idle' | 'running' | 'success' | 'error'>('idle');
   const [runResult, setRunResult] = useState<any | null>(null);
@@ -566,14 +567,24 @@ function FlowContent() {
     setRunStatus('idle');
     setRunResult(null);
     setSelectedPatientId(null);
+    setPatientsFallbackUsed(false);
     setShowAddPatient(false);
     setNewPatientName('');
     setNewPatientPhone('');
     setLoadingPatients(true);
     try {
-      const doctorId = user?.sub ?? undefined;
-      const data = await listPatients(doctorId);
-      setPatients(Array.isArray(data) ? data : []);
+      const doctorId = user?.doctor_id ?? user?.sub ?? undefined;
+      const scopedData = await listPatients(doctorId);
+      const scopedPatients = Array.isArray(scopedData) ? scopedData : [];
+
+      if (doctorId && scopedPatients.length === 0) {
+        const allData = await listPatients();
+        const allPatients = Array.isArray(allData) ? allData : [];
+        setPatients(allPatients);
+        setPatientsFallbackUsed(allPatients.length > 0);
+      } else {
+        setPatients(scopedPatients);
+      }
     } catch {
       setPatients([]);
     } finally {
@@ -585,7 +596,7 @@ function FlowContent() {
     if (!newPatientName.trim() || !newPatientPhone.trim()) return;
     setAddingPatient(true);
     try {
-      const doctorId = user?.sub ?? 'anonymous';
+      const doctorId = user?.doctor_id ?? user?.sub ?? 'anonymous';
       const created = await createPatient({
         name: newPatientName.trim(),
         phone: newPatientPhone.trim(),
@@ -989,22 +1000,29 @@ function FlowContent() {
                 ) : patients.length === 0 && !showAddPatient ? (
                   <p className="text-xs text-muted-foreground mb-4">No patients yet — add one above.</p>
                 ) : (
-                  <div className="space-y-1.5 max-h-48 overflow-y-auto mb-4 pr-1">
-                    {patients.map((p) => (
-                      <button
-                        key={p.id}
-                        onClick={() => setSelectedPatientId(p.id)}
-                        className={`w-full text-left px-3 py-2 rounded-lg border text-sm transition-colors ${
-                          selectedPatientId === p.id
-                            ? 'border-primary bg-primary/10 text-foreground'
-                            : 'border-border bg-background text-foreground hover:border-border hover:bg-muted'
-                        }`}
-                      >
-                        <span className="font-medium">{p.name}</span>
-                        <span className="text-xs text-muted-foreground ml-2">{p.phone}</span>
-                      </button>
-                    ))}
-                  </div>
+                  <>
+                    {patientsFallbackUsed && (
+                      <p className="text-[11px] text-amber-600 mb-2">
+                        No patients were found for your doctor ID, so showing all patients.
+                      </p>
+                    )}
+                    <div className="space-y-1.5 max-h-48 overflow-y-auto mb-4 pr-1">
+                      {patients.map((p) => (
+                        <button
+                          key={p.id}
+                          onClick={() => setSelectedPatientId(p.id)}
+                          className={`w-full text-left px-3 py-2 rounded-lg border text-sm transition-colors ${
+                            selectedPatientId === p.id
+                              ? 'border-primary bg-primary/10 text-foreground'
+                              : 'border-border bg-background text-foreground hover:border-border hover:bg-muted'
+                          }`}
+                        >
+                          <span className="font-medium">{p.name}</span>
+                          <span className="text-xs text-muted-foreground ml-2">{p.phone}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </>
                 )}
 
                 <div className="flex justify-end gap-2">

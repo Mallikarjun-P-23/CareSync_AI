@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
-import { useAuth0 } from "@auth0/auth0-react";
+import { useLocalAuth } from "@/lib/local-auth";
 import Link from "next/link";
 import { ArrowRight, Check } from "lucide-react";
 
@@ -106,7 +106,7 @@ export default function PricingPage() {
 }
 
 function PricingContent() {
-  const { isAuthenticated, loginWithRedirect } = useAuth0();
+  const { isAuthenticated, loginWithRedirect } = useLocalAuth();
   const searchParams = useSearchParams();
 
   // After login redirect: if ?plan=<tier> is in the URL and user is

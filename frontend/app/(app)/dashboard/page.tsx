@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useAuth0 } from "@auth0/auth0-react";
+import { useLocalAuth } from "@/lib/local-auth";
 import {
   listPatients,
   createPatient,
@@ -60,7 +60,7 @@ export default function DashboardPage() {
   const [uploadingPdf, setUploadingPdf] = useState(false);
 
   const router = useRouter();
-  const { user } = useAuth0();
+  const { user } = useLocalAuth();
   const doctorId = user?.sub;
 
   const fetchPatients = useCallback(async () => {

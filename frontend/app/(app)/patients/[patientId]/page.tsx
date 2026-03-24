@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, use } from "react";
-import { useAuth0 } from "@auth0/auth0-react";
+import { useLocalAuth } from "@/lib/local-auth";
 import {
   getPatient,
   updatePatient,
@@ -61,7 +61,7 @@ export default function PatientDetailPage({
   params: Promise<{ patientId: string }>;
 }) {
   const { patientId } = use(params);
-  const { user } = useAuth0();
+  const { user } = useLocalAuth();
 
   const [patient, setPatient] = useState<any>(null);
   const [conditions, setConditions] = useState<any[]>([]);

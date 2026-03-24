@@ -10,6 +10,7 @@ const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: "grid" },
   { href: "/patients", label: "Patients", icon: "users" },
   { href: "/calls", label: "Call Log", icon: "phone" },
+  { href: "/availability", label: "Manage Availability", icon: "clock" },
   { href: "/appointments", label: "Appointments", icon: "calendar" },
   { href: "/audit-log", label: "Audit Log", icon: "clipboard" },
 ];

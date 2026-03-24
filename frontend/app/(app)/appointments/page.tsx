@@ -1,69 +1,75 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useAuth0 } from "@auth0/auth0-react";
-import { listCallLogs } from "@/services/api";
+import { useLocalAuth } from "@/lib/local-auth";
+import {
+  listDoctorAppointments,
+  updateDoctorAppointment,
+  type DoctorAppointmentItem,
+} from "@/services/api";
 
 import { cn } from "@/lib/utils";
 import { Calendar, CheckCircle2, Clock, AlertCircle } from "lucide-react";
 
 export default function AppointmentsPage() {
-  const { user } = useAuth0();
+  const { user } = useLocalAuth();
   const doctorId = user?.sub;
 
-  const [callLogs, setCallLogs] = useState<any[]>([]);
+  const [appointments, setAppointments] = useState<DoctorAppointmentItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
 
-  const fetchLogs = useCallback(async () => {
+  const fetchAppointments = useCallback(async () => {
+    if (!doctorId) {
+      setAppointments([]);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
-      const data = await listCallLogs(undefined, doctorId);
-      setCallLogs(Array.isArray(data) ? data : []);
+      const data = await listDoctorAppointments(doctorId);
+      setAppointments(Array.isArray(data) ? data : []);
     } catch {
-      setCallLogs([]);
+      setAppointments([]);
     } finally {
       setLoading(false);
     }
   }, [doctorId]);
 
   useEffect(() => {
-    fetchLogs();
-  }, [fetchLogs]);
+    fetchAppointments();
+  }, [fetchAppointments]);
 
-  const appointmentLogs = callLogs.filter((cl) => {
-    const execLog: any[] = Array.isArray(cl.execution_log) ? cl.execution_log : [];
-    return execLog.some(
-      (step) =>
-        step.node_type === "schedule_appointment" ||
-        step.confirmed_date ||
-        step.call_outcome === "appointment_booked"
-    );
-  });
-
-  const appointments = appointmentLogs.map((cl) => {
-    const execLog: any[] = Array.isArray(cl.execution_log) ? cl.execution_log : [];
-    const calStep = execLog.find(
-      (s) => s.node_type === "schedule_appointment" || s.confirmed_date
-    );
-    return {
-      id: cl.id,
-      patientId: cl.patient_id,
-      workflowId: cl.workflow_id,
-      date: calStep?.confirmed_date || "—",
-      time: calStep?.confirmed_time || "—",
-      doctorName: calStep?.doctor_name || "—",
-      status: calStep?.status === "ok" ? "confirmed" : calStep?.status === "error" ? "failed" : "pending",
-      calendarEventId: calStep?.calendar_event_id,
-      createdAt: cl.created_at,
-    };
-  });
+  const handleAppointmentUpdate = useCallback(
+    async (appointmentId: string, payload: { status?: string; notes?: string }) => {
+      if (!doctorId) return;
+      setSavingId(appointmentId);
+      setMessage(null);
+      try {
+        await updateDoctorAppointment(appointmentId, {
+          doctor_id: doctorId,
+          ...payload,
+        });
+        await fetchAppointments();
+        setMessage("Appointment updated.");
+      } catch (err) {
+        const text = err instanceof Error ? err.message : "Update failed.";
+        setMessage(text);
+      } finally {
+        setSavingId(null);
+      }
+    },
+    [doctorId, fetchAppointments],
+  );
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Appointments</h1>
         <p className="text-sm text-muted-foreground">
-          Appointments booked via automated workflows.
+          Appointments booked by patients.
           {!loading && ` ${appointments.length} appointment${appointments.length !== 1 ? "s" : ""} found.`}
         </p>
       </div>
@@ -76,19 +82,19 @@ export default function AppointmentsPage() {
         <div className="rounded-xl border border-border bg-card p-12 text-center">
           <Calendar className="size-10 text-muted-foreground/40 mx-auto mb-3" />
           <p className="text-sm text-muted-foreground">
-            No appointments yet. Appointments will appear here when workflows book them via call interactions.
+            No appointments yet. Booked appointments will appear here.
           </p>
         </div>
       ) : (
         <div className="space-y-3">
           {appointments.map((apt) => {
             const StatusIcon =
-              apt.status === "confirmed" ? CheckCircle2 :
-              apt.status === "failed" ? AlertCircle :
+              apt.status === "booked" || apt.status === "confirmed" ? CheckCircle2 :
+              apt.status === "cancelled" ? AlertCircle :
               Clock;
             const statusStyle =
-              apt.status === "confirmed" ? "bg-success/10 text-success" :
-              apt.status === "failed" ? "bg-destructive/10 text-destructive" :
+              apt.status === "booked" || apt.status === "confirmed" ? "bg-success/10 text-success" :
+              apt.status === "cancelled" ? "bg-destructive/10 text-destructive" :
               "bg-muted text-muted-foreground";
 
             return (
@@ -103,18 +109,39 @@ export default function AppointmentsPage() {
                         <StatusIcon className="size-3" />
                         {apt.status}
                       </span>
-                      {apt.doctorName !== "—" && (
-                        <span className="text-xs text-muted-foreground">{apt.doctorName}</span>
-                      )}
+                      <span className="text-xs text-muted-foreground">{apt.consultation_type}</span>
                     </div>
                     <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
-                      <span>Date: <strong className="text-foreground">{apt.date}</strong></span>
-                      <span>Time: <strong className="text-foreground">{apt.time}</strong></span>
-                      <span>Patient: <code className="bg-muted px-1.5 py-0.5 rounded font-mono text-[10px]">{apt.patientId?.slice(0, 8)}…</code></span>
+                      <span>Date: <strong className="text-foreground">{apt.slot_start ? new Date(apt.slot_start).toLocaleDateString() : "—"}</strong></span>
+                      <span>Time: <strong className="text-foreground">{apt.slot_start ? new Date(apt.slot_start).toLocaleTimeString() : "—"}</strong></span>
+                      <span>Patient: <strong className="text-foreground">{apt.patient_name || apt.patient_id?.slice(0, 8)}</strong></span>
                     </div>
                     <div className="flex items-center gap-3 mt-1 text-[10px] text-muted-foreground">
-                      <span>Created: {new Date(apt.createdAt).toLocaleString()}</span>
-                      {apt.calendarEventId && <span>Calendar ID: {apt.calendarEventId}</span>}
+                      <span>Phone: {apt.patient_phone || "—"}</span>
+                      <span>Created: {new Date(apt.created_at).toLocaleString()}</span>
+                    </div>
+                    <div className="mt-3 grid gap-2 md:grid-cols-3">
+                      <select
+                        defaultValue={apt.status}
+                        className="rounded-md border border-border bg-background px-2 py-1.5 text-xs"
+                        onChange={(e) => {
+                          void handleAppointmentUpdate(apt.id, { status: e.target.value });
+                        }}
+                        disabled={savingId === apt.id}
+                      >
+                        <option value="booked">booked</option>
+                        <option value="confirmed">confirmed</option>
+                        <option value="in_progress">in_progress</option>
+                        <option value="completed">completed</option>
+                        <option value="no_show">no_show</option>
+                        <option value="cancelled">cancelled</option>
+                      </select>
+                      <ButtonRow
+                        disabled={savingId === apt.id}
+                        onConfirm={() => handleAppointmentUpdate(apt.id, { status: "confirmed" })}
+                        onComplete={() => handleAppointmentUpdate(apt.id, { status: "completed" })}
+                        onCancel={() => handleAppointmentUpdate(apt.id, { status: "cancelled" })}
+                      />
                     </div>
                   </div>
                 </div>
@@ -123,6 +150,50 @@ export default function AppointmentsPage() {
           })}
         </div>
       )}
+
+      {message && (
+        <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+          {message}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ButtonRow({
+  onConfirm,
+  onComplete,
+  onCancel,
+  disabled,
+}: {
+  onConfirm: () => void;
+  onComplete: () => void;
+  onCancel: () => void;
+  disabled: boolean;
+}) {
+  return (
+    <div className="md:col-span-2 flex flex-wrap gap-2">
+      <button
+        className="rounded-md border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50"
+        disabled={disabled}
+        onClick={() => void onConfirm()}
+      >
+        Confirm
+      </button>
+      <button
+        className="rounded-md border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50"
+        disabled={disabled}
+        onClick={() => void onComplete()}
+      >
+        Complete
+      </button>
+      <button
+        className="rounded-md border border-destructive/40 px-2 py-1 text-xs text-destructive hover:bg-destructive/10 disabled:opacity-50"
+        disabled={disabled}
+        onClick={() => void onCancel()}
+      >
+        Cancel
+      </button>
     </div>
   );
 }
