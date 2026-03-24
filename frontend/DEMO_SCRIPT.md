@@ -1,4 +1,4 @@
-# Clarus — Hackathon Demo Script
+# CareSync AI — Hackathon Demo Script
 
 > **Total time:** 3:00
 > **Scripted sections:** ~1:30

@@ -1139,7 +1139,9 @@ def get_pdf_document(doc_id: str) -> dict | None:
 
 def list_pdf_documents(patient_id: str | None = None) -> list[dict]:
     sb = get_supabase()
-    q = sb.table("pdf_documents").select("*")
+    q = sb.table("pdf_documents").select(
+        "id,patient_id,filename,page_count,patient_info,lab_results,tables_data,uploaded_by,created_at"
+    )
     if patient_id:
         q = q.eq("patient_id", patient_id)
     return q.order("created_at", desc=True).execute().data
@@ -1148,3 +1150,65 @@ def list_pdf_documents(patient_id: str | None = None) -> list[dict]:
 def delete_pdf_document(doc_id: str) -> None:
     sb = get_supabase()
     sb.table("pdf_documents").delete().eq("id", doc_id).execute()
+
+
+# ---------------------------------------------------------------------------
+# Consultation room + chat helpers (Phase 3 chat)
+# ---------------------------------------------------------------------------
+
+def get_consultation_room_by_appointment(appointment_id: str) -> dict | None:
+    sb = get_supabase()
+    rows = (
+        sb.table("consultation_rooms")
+        .select("id,appointment_id,provider,room_name,room_url,created_at,updated_at")
+        .eq("appointment_id", appointment_id)
+        .limit(1)
+        .execute()
+        .data
+    )
+    return rows[0] if rows else None
+
+
+def create_consultation_room(
+    appointment_id: str,
+    provider: str = "daily",
+    room_name: str | None = None,
+) -> dict:
+    sb = get_supabase()
+
+    existing = get_consultation_room_by_appointment(appointment_id)
+    if existing:
+        return existing
+
+    safe_room_name = room_name or f"consult-{appointment_id[:8]}"
+    row = (
+        sb.table("consultation_rooms")
+        .insert(
+            {
+                "appointment_id": appointment_id,
+                "provider": provider,
+                "room_name": safe_room_name,
+            }
+        )
+        .execute()
+        .data[0]
+    )
+    return row
+
+
+def list_consultation_messages(appointment_id: str, limit: int = 200) -> list[dict]:
+    sb = get_supabase()
+    return (
+        sb.table("consultation_messages")
+        .select("id,appointment_id,room_id,sender_type,sender_id,message,created_at")
+        .eq("appointment_id", appointment_id)
+        .order("created_at", desc=False)
+        .limit(limit)
+        .execute()
+        .data
+    )
+
+
+def create_consultation_message(payload: dict) -> dict:
+    sb = get_supabase()
+    return sb.table("consultation_messages").insert(payload).execute().data[0]

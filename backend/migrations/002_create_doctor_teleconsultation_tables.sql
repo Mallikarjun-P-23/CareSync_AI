@@ -1,5 +1,5 @@
 -- =========================================================================
--- Clarus / MedTrigger — Doctor Availability + Teleconsultation schema
+-- CareSync AIw / MedTrigger — Doctor Availability + Teleconsultation schema
 -- Phase 0 foundation for directory, booking, consultation, reminders, feedback
 -- Run after:
 --   000_create_base_tables.sql

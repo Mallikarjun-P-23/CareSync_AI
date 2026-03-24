@@ -85,7 +85,7 @@ export default function PitchDeck() {
               className="h-20 w-20"
             />
             <span className="font-serif text-8xl font-bold tracking-tight text-foreground">
-              Clarus
+              CareSync AI
             </span>
           </div>
 

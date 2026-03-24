@@ -61,7 +61,7 @@ export default function SettingsPage() {
           <h3 className="text-sm font-semibold">Application</h3>
         </div>
         <div className="p-5 space-y-3">
-          <InfoRow icon={Shield} label="App" value="Clarus — Clinical Workflow Automation" />
+          <InfoRow icon={Shield} label="App" value="CareSync AI — Clinical Workflow Automation" />
           <InfoRow icon={ExternalLink} label="API" value={process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"} />
           <InfoRow icon={ExternalLink} label="Authentication" value="Local email/password" />
         </div>

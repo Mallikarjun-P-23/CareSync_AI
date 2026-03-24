@@ -9,6 +9,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, Response, UploadFile, File, Form
 from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 
 import app.services.supabase_service as db
 from app.services.workflow_engine import execute_workflow
@@ -16,6 +17,17 @@ from app.services.workflow_engine import execute_workflow
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+async def _run_db_call(func, *args, **kwargs):
+    return await run_in_threadpool(lambda: func(*args, **kwargs))
+
+
+async def _resolve_doctor_or_404_async(doctor_identifier: str) -> dict:
+    doctor = await _run_db_call(db.resolve_doctor, doctor_identifier)
+    if not doctor:
+        raise HTTPException(status_code=404, detail="Doctor not found")
+    return doctor
 
 
 def _resolve_doctor_or_404(doctor_identifier: str) -> dict:
@@ -288,6 +300,28 @@ class ConsultationRoomResponse(BaseModel):
     room_url: str | None = None
 
 
+class ConsultationRoomCreateRequest(BaseModel):
+    actor_role: str = Field(pattern="^(doctor|patient)$")
+    actor_id: str
+    provider: str = "daily"
+
+
+class ConsultationMessageCreateRequest(BaseModel):
+    actor_role: str = Field(pattern="^(doctor|patient)$")
+    actor_id: str
+    message: str = Field(min_length=1, max_length=2000)
+
+
+class ConsultationMessageResponse(BaseModel):
+    id: str
+    appointment_id: str
+    room_id: str | None = None
+    sender_type: str
+    sender_id: str | None = None
+    message: str
+    created_at: str
+
+
 class ReminderJobResponse(BaseModel):
     appointment_id: str
     reminder_type: str
@@ -312,6 +346,28 @@ class FeedbackResponse(BaseModel):
     created_at: str
 
 
+def _validate_consultation_access(appointment: dict, actor_role: str, actor_id: str) -> tuple[str, str]:
+    """
+    Validate chat room access and return normalized (sender_type, sender_id).
+    sender_id is persisted as the canonical doctor/patient entity id.
+    """
+    if actor_role not in {"doctor", "patient"}:
+        raise HTTPException(status_code=400, detail="actor_role must be doctor or patient")
+
+    if actor_role == "doctor":
+        doctor = _resolve_doctor_or_404(actor_id)
+        if appointment.get("doctor_id") != doctor.get("id"):
+            raise HTTPException(status_code=403, detail="This appointment is not assigned to this doctor")
+        return "doctor", doctor["id"]
+
+    patient = db.get_patient_by_auth_user_id(actor_id)
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient profile not found for this auth user")
+    if appointment.get("patient_id") != patient.get("id"):
+        raise HTTPException(status_code=403, detail="This appointment does not belong to this patient")
+    return "patient", patient["id"]
+
+
 # ---------------------------------------------------------------------------
 # Doctor directory + availability (Phase 1)
 # ---------------------------------------------------------------------------
@@ -323,7 +379,8 @@ async def list_doctors(
     consultation_type: str | None = None,
     available_now: bool | None = None,
 ):
-    doctors = db.list_doctors(
+    doctors = await _run_db_call(
+        db.list_doctors,
         specialty=specialty,
         language=language,
         consultation_type=consultation_type,
@@ -334,8 +391,8 @@ async def list_doctors(
 
 @router.get("/doctors/{doctor_id}/availability", response_model=list[DoctorAvailabilitySlot])
 async def doctor_availability(doctor_id: str):
-    doctor = _resolve_doctor_or_404(doctor_id)
-    return db.list_doctor_availability(doctor["id"])
+    doctor = await _resolve_doctor_or_404_async(doctor_id)
+    return await _run_db_call(db.list_doctor_availability, doctor["id"])
 
 
 @router.get("/doctors/{doctor_id}/slots")
@@ -344,8 +401,13 @@ async def doctor_slots(
     include_past: bool = False,
     status: str | None = None,
 ):
-    doctor = _resolve_doctor_or_404(doctor_id)
-    return db.list_doctor_slots(doctor["id"], include_past=include_past, status=status)
+    doctor = await _resolve_doctor_or_404_async(doctor_id)
+    return await _run_db_call(
+        db.list_doctor_slots,
+        doctor["id"],
+        include_past=include_past,
+        status=status,
+    )
 
 
 @router.post("/doctors/{doctor_id}/slots", status_code=201)
@@ -461,7 +523,7 @@ async def register_patient_portal(body: PatientPortalRegisterRequest):
 
 @router.get("/patient-portal/me")
 async def patient_portal_me(auth_user_id: str):
-    profile = db.get_patient_by_auth_user_id(auth_user_id)
+    profile = await _run_db_call(db.get_patient_by_auth_user_id, auth_user_id)
     if not profile:
         raise HTTPException(status_code=404, detail="Patient profile not found")
     return profile
@@ -469,16 +531,16 @@ async def patient_portal_me(auth_user_id: str):
 
 @router.get("/patient-portal/appointments")
 async def patient_portal_appointments(auth_user_id: str):
-    profile = db.get_patient_by_auth_user_id(auth_user_id)
+    profile = await _run_db_call(db.get_patient_by_auth_user_id, auth_user_id)
     if not profile:
         raise HTTPException(status_code=404, detail="Patient profile not found")
-    return db.list_patient_appointments(profile["id"])
+    return await _run_db_call(db.list_patient_appointments, profile["id"])
 
 
 @router.get("/appointments")
 async def doctor_appointments(doctor_id: str):
-    doctor = _resolve_doctor_or_404(doctor_id)
-    return db.list_doctor_appointments(doctor["id"])
+    doctor = await _resolve_doctor_or_404_async(doctor_id)
+    return await _run_db_call(db.list_doctor_appointments, doctor["id"])
 
 
 @router.put("/appointments/{appointment_id}")
@@ -513,6 +575,65 @@ async def update_appointment(appointment_id: str, body: AppointmentDoctorUpdateR
     except Exception as exc:
         logger.exception("Appointment update failed appointment_id=%s", appointment_id)
         raise HTTPException(status_code=400, detail=f"Appointment update failed: {exc}") from exc
+
+
+@router.post("/appointments/{appointment_id}/consultation-room", response_model=ConsultationRoomResponse)
+async def get_or_create_consultation_room(appointment_id: str, body: ConsultationRoomCreateRequest):
+    appointment = db.get_appointment(appointment_id)
+    if not appointment:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+
+    _validate_consultation_access(appointment, body.actor_role, body.actor_id)
+
+    provider = body.provider if body.provider in {"daily", "100ms", "twilio"} else "daily"
+    room = db.get_consultation_room_by_appointment(appointment_id)
+    if not room:
+        room = db.create_consultation_room(
+            appointment_id=appointment_id,
+            provider=provider,
+            room_name=f"consult-{appointment_id[:8]}",
+        )
+    return room
+
+
+@router.get("/appointments/{appointment_id}/messages", response_model=list[ConsultationMessageResponse])
+async def list_consultation_messages(
+    appointment_id: str,
+    actor_role: str,
+    actor_id: str,
+):
+    appointment = db.get_appointment(appointment_id)
+    if not appointment:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+
+    _validate_consultation_access(appointment, actor_role, actor_id)
+    return db.list_consultation_messages(appointment_id)
+
+
+@router.post("/appointments/{appointment_id}/messages", response_model=ConsultationMessageResponse)
+async def create_consultation_message(appointment_id: str, body: ConsultationMessageCreateRequest):
+    appointment = db.get_appointment(appointment_id)
+    if not appointment:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+
+    sender_type, sender_id = _validate_consultation_access(appointment, body.actor_role, body.actor_id)
+    room = db.get_consultation_room_by_appointment(appointment_id)
+    if not room:
+        room = db.create_consultation_room(
+            appointment_id=appointment_id,
+            provider="daily",
+            room_name=f"consult-{appointment_id[:8]}",
+        )
+
+    return db.create_consultation_message(
+        {
+            "appointment_id": appointment_id,
+            "room_id": room.get("id"),
+            "sender_type": sender_type,
+            "sender_id": sender_id,
+            "message": body.message.strip(),
+        }
+    )
 
 
 @router.post("/patient-portal/slots/{slot_id}/book")
@@ -590,7 +711,7 @@ async def patient_portal_reschedule_appointment(
 
 @router.get("/patients")
 async def list_patients(doctor_id: str | None = None):
-    return db.list_patients(doctor_id=doctor_id)
+    return await _run_db_call(db.list_patients, doctor_id=doctor_id)
 
 
 @router.post("/patients", status_code=201)
@@ -602,7 +723,7 @@ async def create_patient(body: PatientCreate):
 
 @router.get("/patients/{patient_id}")
 async def get_patient(patient_id: str):
-    patient = db.get_patient(patient_id)
+    patient = await _run_db_call(db.get_patient, patient_id)
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
     return patient
@@ -634,10 +755,10 @@ async def delete_patient(patient_id: str):
 
 @router.get("/patients/{patient_id}/conditions")
 async def list_conditions(patient_id: str):
-    patient = db.get_patient(patient_id)
+    patient = await _run_db_call(db.get_patient, patient_id)
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
-    return db.list_conditions(patient_id)
+    return await _run_db_call(db.list_conditions, patient_id)
 
 
 @router.post("/patients/{patient_id}/conditions", status_code=201)
@@ -669,10 +790,10 @@ async def delete_condition(patient_id: str, condition_id: str):
 
 @router.get("/patients/{patient_id}/medications")
 async def list_medications(patient_id: str):
-    patient = db.get_patient(patient_id)
+    patient = await _run_db_call(db.get_patient, patient_id)
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
-    return db.list_medications(patient_id)
+    return await _run_db_call(db.list_medications, patient_id)
 
 
 @router.post("/patients/{patient_id}/medications", status_code=201)
@@ -707,7 +828,7 @@ async def list_workflows(
     doctor_id: str | None = None,
     status: str | None = None,
 ):
-    return db.list_workflows(doctor_id=doctor_id, status=status)
+    return await _run_db_call(db.list_workflows, doctor_id=doctor_id, status=status)
 
 
 @router.post("/workflows", status_code=201)
@@ -718,7 +839,7 @@ async def create_workflow(body: WorkflowCreate):
 
 @router.get("/workflows/{workflow_id}")
 async def get_workflow(workflow_id: str):
-    wf = db.get_workflow(workflow_id)
+    wf = await _run_db_call(db.get_workflow, workflow_id)
     if not wf:
         raise HTTPException(status_code=404, detail="Workflow not found")
     return wf
@@ -1637,7 +1758,7 @@ async def list_call_logs(
     workflow_id: str | None = None,
     doctor_id: str | None = None,
 ):
-    return db.list_call_logs(workflow_id=workflow_id, doctor_id=doctor_id)
+    return await _run_db_call(db.list_call_logs, workflow_id=workflow_id, doctor_id=doctor_id)
 
 
 # ---------------------------------------------------------------------------
@@ -2097,12 +2218,12 @@ async def import_pdf_to_patient(patient_id: str, file: UploadFile = File(...)):
 
 @router.get("/pdf/documents")
 async def list_pdf_documents(patient_id: str | None = None):
-    return db.list_pdf_documents(patient_id=patient_id)
+    return await _run_db_call(db.list_pdf_documents, patient_id=patient_id)
 
 
 @router.get("/pdf/documents/{doc_id}")
 async def get_pdf_document(doc_id: str):
-    doc = db.get_pdf_document(doc_id)
+    doc = await _run_db_call(db.get_pdf_document, doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="PDF document not found")
     return doc
@@ -2198,7 +2319,7 @@ async def extract_pdf_and_execute(
 
 @router.get("/notifications")
 async def list_notifications(patient_id: str | None = None):
-    return db.list_notifications(patient_id=patient_id)
+    return await _run_db_call(db.list_notifications, patient_id=patient_id)
 
 
 # ---------------------------------------------------------------------------
@@ -2207,7 +2328,7 @@ async def list_notifications(patient_id: str | None = None):
 
 @router.get("/lab-orders")
 async def list_lab_orders(patient_id: str | None = None):
-    return db.list_lab_orders(patient_id=patient_id)
+    return await _run_db_call(db.list_lab_orders, patient_id=patient_id)
 
 
 # ---------------------------------------------------------------------------
@@ -2216,7 +2337,7 @@ async def list_lab_orders(patient_id: str | None = None):
 
 @router.get("/referrals")
 async def list_referrals(patient_id: str | None = None):
-    return db.list_referrals(patient_id=patient_id)
+    return await _run_db_call(db.list_referrals, patient_id=patient_id)
 
 
 # ---------------------------------------------------------------------------
@@ -2228,7 +2349,7 @@ async def list_staff_assignments(
     patient_id: str | None = None,
     staff_id: str | None = None,
 ):
-    return db.list_staff_assignments(patient_id=patient_id, staff_id=staff_id)
+    return await _run_db_call(db.list_staff_assignments, patient_id=patient_id, staff_id=staff_id)
 
 
 # ---------------------------------------------------------------------------
@@ -2240,12 +2361,12 @@ async def list_reports(
     patient_id: str | None = None,
     workflow_id: str | None = None,
 ):
-    return db.list_reports(patient_id=patient_id, workflow_id=workflow_id)
+    return await _run_db_call(db.list_reports, patient_id=patient_id, workflow_id=workflow_id)
 
 
 @router.get("/reports/{report_id}")
 async def get_report(report_id: str):
-    report = db.get_report(report_id)
+    report = await _run_db_call(db.get_report, report_id)
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
     return report

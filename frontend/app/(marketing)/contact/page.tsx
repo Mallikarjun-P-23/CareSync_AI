@@ -81,7 +81,7 @@ export default function ContactPage() {
                   <input
                     type="hidden"
                     name="subject"
-                    value="New Contact Form Submission — Clarus"
+                    value="New Contact Form Submission — CareSync AI"
                   />
 
                   <div className="grid gap-6 md:grid-cols-2">

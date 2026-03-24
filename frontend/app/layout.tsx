@@ -22,7 +22,7 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "CareSync AI",
   description:
-    "Automate clinical workflows with event-driven triggers. When a clinical event occurs, Clarus contacts patients, books appointments, and coordinates follow-ups automatically.",
+    "Automate clinical workflows with event-driven triggers. When a clinical event occurs, CareSync AI contacts patients, books appointments, and coordinates follow-ups automatically.",
   icons: {
     icon: [
       { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },

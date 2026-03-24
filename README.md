@@ -1,5 +1,5 @@
 <p align="center">
-  <strong>Clarus</strong>
+  <strong>CareSync AI</strong>
 </p>
 
 <p align="center">
@@ -21,7 +21,7 @@
 
 ## Overview
 
-Clarus helps clinicians automate patient follow-up through:
+CareSync AI helps clinicians automate patient follow-up through:
 
 - **Visual workflow builder** — Drag-and-drop design of triggers, conditions, and actions (React Flow)
 - **AI voice calls** — ElevenLabs Conversational AI + Twilio for outbound patient outreach
@@ -453,7 +453,7 @@ See `render.yaml` for Render configuration.
 | **AI Calls** | ElevenLabs ConvAI + Twilio → patient phone → webhook → call_log + calendar |
 | **PDF** | pdfplumber extraction → patient + lab data → workflow context |
 
-Clarus automates patient outreach from clinical events to AI voice calls and calendar booking.
+CareSync AI automates patient outreach from clinical events to AI voice calls and calendar booking.
 
 ---
 

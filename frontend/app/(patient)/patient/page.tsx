@@ -281,6 +281,9 @@ export default function PatientPortalPage() {
                     <p className="text-muted-foreground capitalize">Status: {appt.status}</p>
                     {appt.status !== "cancelled" && appt.status !== "completed" && appt.status !== "no_show" && (
                       <div className="mt-2 flex gap-2">
+                        <Link href={`/consultation/${appt.id}`}>
+                          <Button size="sm" variant="outline">Open Chat</Button>
+                        </Link>
                         <Link href={`/patient/booking?appointmentId=${appt.id}`}>
                           <Button size="sm" variant="outline">Reschedule</Button>
                         </Link>

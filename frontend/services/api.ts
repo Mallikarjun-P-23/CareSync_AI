@@ -69,6 +69,24 @@ export interface DoctorAppointmentItem {
   slot_end?: string;
 }
 
+export interface ConsultationRoom {
+  id: string;
+  appointment_id: string;
+  provider: string;
+  room_name: string;
+  room_url?: string | null;
+}
+
+export interface ConsultationMessage {
+  id: string;
+  appointment_id: string;
+  room_id?: string | null;
+  sender_type: "doctor" | "patient" | "system";
+  sender_id?: string | null;
+  message: string;
+  created_at: string;
+}
+
 export interface ReportItem {
   id: string;
   workflow_id?: string | null;
@@ -300,6 +318,60 @@ export async function updateDoctorAppointment(
     throw new Error(`Failed to update appointment (${response.status}): ${detail}`);
   }
   return response.json() as Promise<DoctorAppointmentItem>;
+}
+
+export async function getOrCreateConsultationRoom(
+  appointmentId: string,
+  payload: {
+    actor_role: "doctor" | "patient";
+    actor_id: string;
+    provider?: string;
+  },
+) {
+  const response = await fetch(`${API_URL}/api/appointments/${appointmentId}/consultation-room`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => response.statusText);
+    throw new Error(`Failed to open consultation room (${response.status}): ${detail}`);
+  }
+  return response.json() as Promise<ConsultationRoom>;
+}
+
+export async function listConsultationMessages(
+  appointmentId: string,
+  actorRole: "doctor" | "patient",
+  actorId: string,
+) {
+  const params = new URLSearchParams({ actor_role: actorRole, actor_id: actorId });
+  const response = await fetch(`${API_URL}/api/appointments/${appointmentId}/messages?${params.toString()}`);
+  if (!response.ok) {
+    const detail = await response.text().catch(() => response.statusText);
+    throw new Error(`Failed to fetch consultation messages (${response.status}): ${detail}`);
+  }
+  return response.json() as Promise<ConsultationMessage[]>;
+}
+
+export async function createConsultationMessage(
+  appointmentId: string,
+  payload: {
+    actor_role: "doctor" | "patient";
+    actor_id: string;
+    message: string;
+  },
+) {
+  const response = await fetch(`${API_URL}/api/appointments/${appointmentId}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => response.statusText);
+    throw new Error(`Failed to send consultation message (${response.status}): ${detail}`);
+  }
+  return response.json() as Promise<ConsultationMessage>;
 }
 
 export async function cancelPatientPortalAppointment(

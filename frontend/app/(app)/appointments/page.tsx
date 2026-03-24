@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { useLocalAuth } from "@/lib/local-auth";
 import {
   listDoctorAppointments,
@@ -136,6 +137,13 @@ export default function AppointmentsPage() {
                         <option value="no_show">no_show</option>
                         <option value="cancelled">cancelled</option>
                       </select>
+                      <div className="flex items-center">
+                        <Link href={`/consultation/${apt.id}`} className="w-full">
+                          <button className="w-full rounded-md border border-primary/30 bg-primary/10 px-2 py-1.5 text-xs text-primary hover:bg-primary/15">
+                            Open Chat
+                          </button>
+                        </Link>
+                      </div>
                       <ButtonRow
                         disabled={savingId === apt.id}
                         onConfirm={() => handleAppointmentUpdate(apt.id, { status: "confirmed" })}

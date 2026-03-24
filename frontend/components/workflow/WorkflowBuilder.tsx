@@ -651,7 +651,7 @@ function FlowContent() {
         <div className="flex items-center gap-2">
           <Link href="/dashboard" className="flex items-center gap-2 font-serif text-2xl tracking-tight text-foreground">
             <Image src="/assets/Clarus.png" alt="Clarus" width={32} height={32} />
-            Clarus
+            CareSync AI
           </Link>
           <span className="text-muted-foreground text-sm">/</span>
           <span className="text-muted-foreground text-sm">

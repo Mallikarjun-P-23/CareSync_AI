@@ -10,7 +10,7 @@ export function Footer() {
           <div>
             <div className="flex items-center gap-2">
               <Image src="/assets/Clarus.png" alt="Clarus" width={24} height={24} />
-              <span className="font-serif text-xl tracking-tight">Clarus</span>
+              <span className="font-serif text-xl tracking-tight">CareSync AI</span>
             </div>
             <p className="mt-3 text-sm text-muted-foreground">
               Intelligent clinical workflow automation
@@ -63,7 +63,7 @@ export function Footer() {
         </div>
 
         <div className="mt-12 border-t border-border pt-6 text-xs text-muted-foreground/60">
-          &copy; {new Date().getFullYear()} Clarus Inc.
+          &copy; {new Date().getFullYear()} CareSync AI Inc.
         </div>
       </div>
     </footer>

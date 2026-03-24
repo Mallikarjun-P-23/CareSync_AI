@@ -88,16 +88,16 @@ Timebox: 2:00 to 2:45
 
 Checklist
 - [ ] Add managed WebRTC SDK (recommended: Daily for speed)
-- [ ] Create consultation room per appointment
+- [x] Create consultation room per appointment
 - [ ] Add consultation route/page:
 	- [ ] Join video room
-	- [ ] Basic chat pane
-- [ ] Persist chat messages to `consultation_messages`
+	- [x] Basic chat pane
+- [x] Persist chat messages to `consultation_messages`
 
 Definition of Done
-- [ ] Appointment opens consultation room
+- [x] Appointment opens consultation room
 - [ ] Video join is working
-- [ ] Chat messages save and display
+- [x] Chat messages save and display
 
 ---
 

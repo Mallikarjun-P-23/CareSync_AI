@@ -6,13 +6,13 @@ const team = [
     name: "Dr. Priya Nair",
     role: "General Practitioner",
     quote:
-      "We used to spend two hours a day calling patients about lab results. With Clarus, those calls happen automatically.",
+      "We used to spend two hours a day calling patients about lab results. With CareSync AI, those calls happen automatically.",
   },
   {
     name: "Sarah M.",
     role: "Clinic Administrator",
     quote:
-      "Managing scheduling for three physicians meant constant phone calls. Clarus gave us our day back.",
+      "Managing scheduling for three physicians meant constant phone calls. CareSync AI gave us our day back.",
   },
   {
     name: "James T.",

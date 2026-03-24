@@ -1,5 +1,5 @@
 -- =========================================================================
--- Clarus / MedTrigger — BASE schema
+-- CareSync AI / MedTrigger — BASE schema
 -- Run this FIRST in the Supabase SQL Editor BEFORE running 001_create_new_tables.sql
 -- Dashboard → SQL Editor → New Query → paste → Run
 -- =========================================================================

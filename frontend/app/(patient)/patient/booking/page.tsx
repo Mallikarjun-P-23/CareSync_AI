@@ -14,7 +14,7 @@ import {
   type DoctorListItem,
 } from "@/services/api";
 import { Button } from "@/components/ui/button";
-import { CalendarClock, Loader2, Stethoscope, UserRound } from "lucide-react";
+import { CalendarClock, Loader2, Stethoscope } from "lucide-react";
 
 type DoctorSlotsMap = Record<string, DoctorAvailabilitySlot[]>;
 
@@ -34,19 +34,11 @@ export default function PatientBookingPage() {
   const [loading, setLoading] = useState(true);
   const [doctors, setDoctors] = useState<DoctorListItem[]>([]);
   const [doctorSlots, setDoctorSlots] = useState<DoctorSlotsMap>({});
+  const [expandedDoctorId, setExpandedDoctorId] = useState<string | null>(null);
+  const [slotsLoadingDoctorId, setSlotsLoadingDoctorId] = useState<string | null>(null);
   const [consultationType, setConsultationType] = useState("video");
   const [bookingSlotId, setBookingSlotId] = useState<string | null>(null);
   const [status, setStatus] = useState<{ type: "success" | "error" | "info"; text: string } | null>(null);
-
-  const loadAllDoctorSlots = useCallback(async (doctorRows: DoctorListItem[]) => {
-    const slotPairs = await Promise.all(
-      doctorRows.map(async (doctor) => {
-        const rows = await listDoctorAvailability(doctor.id);
-        return [doctor.id, rows] as const;
-      }),
-    );
-    setDoctorSlots(Object.fromEntries(slotPairs));
-  }, []);
 
   useEffect(() => {
     if (!isAuthenticated || !authUserId) {
@@ -64,12 +56,10 @@ export default function PatientBookingPage() {
         if (!profile) {
           setStatus({ type: "info", text: "Complete patient registration first in the portal." });
           setDoctors(doctorRows);
-          await loadAllDoctorSlots(doctorRows);
           return;
         }
 
         setDoctors(doctorRows);
-        await loadAllDoctorSlots(doctorRows);
       })
       .catch((err) => {
         const text = err instanceof Error ? err.message : "Failed to load booking data.";
@@ -82,9 +72,29 @@ export default function PatientBookingPage() {
     return () => {
       active = false;
     };
-  }, [authUserId, isAuthenticated, loadAllDoctorSlots]);
+  }, [authUserId, isAuthenticated]);
 
-  const handleBook = useCallback(async (slotId: string) => {
+  const availableDoctors = doctors.filter((doctor) => doctor.available_now || Boolean(doctor.next_slot_start));
+
+  const handleSeeSlots = useCallback(async (doctorId: string) => {
+    const isAlreadyOpen = expandedDoctorId === doctorId;
+    setExpandedDoctorId(isAlreadyOpen ? null : doctorId);
+    if (isAlreadyOpen || doctorSlots[doctorId]) return;
+
+    setSlotsLoadingDoctorId(doctorId);
+    setStatus(null);
+    try {
+      const rows = await listDoctorAvailability(doctorId);
+      setDoctorSlots((prev) => ({ ...prev, [doctorId]: rows }));
+    } catch (err) {
+      const text = err instanceof Error ? err.message : "Failed to load slots.";
+      setStatus({ type: "error", text });
+    } finally {
+      setSlotsLoadingDoctorId(null);
+    }
+  }, [doctorSlots, expandedDoctorId]);
+
+  const handleBook = useCallback(async (slotId: string, doctorId: string) => {
     if (!authUserId) return;
 
     setBookingSlotId(slotId);
@@ -169,7 +179,13 @@ export default function PatientBookingPage() {
       )}
 
       <div className="mt-6 space-y-4">
-        {doctors.map((doctor) => {
+        {availableDoctors.length === 0 ? (
+          <article className="rounded-xl border border-border bg-card p-4">
+            <p className="text-sm text-muted-foreground">No doctors with available slots right now.</p>
+          </article>
+        ) : availableDoctors.map((doctor) => {
+          const isExpanded = expandedDoctorId === doctor.id;
+          const isSlotsLoading = slotsLoadingDoctorId === doctor.id;
           const slots = doctorSlots[doctor.id] || [];
 
           return (
@@ -179,16 +195,22 @@ export default function PatientBookingPage() {
                   <p className="text-sm font-semibold">{doctor.name}</p>
                   <div className="mt-1 flex flex-wrap gap-3 text-xs text-muted-foreground">
                     <span className="inline-flex items-center gap-1"><Stethoscope className="size-3.5" />{doctor.specialty}</span>
-                    <span className="inline-flex items-center gap-1"><UserRound className="size-3.5" />{doctor.language}</span>
-                    <span className="rounded-full bg-muted px-2 py-0.5 uppercase tracking-wide">{doctor.consultation_type}</span>
                   </div>
                 </div>
-                <span className={`rounded-full px-2 py-1 text-xs ${doctor.available_now ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground"}`}>
-                  {doctor.available_now ? "Available now" : "Next slot available"}
-                </span>
+                <Button variant="outline" size="sm" onClick={() => handleSeeSlots(doctor.id)}>
+                  {isExpanded ? "Hide Slots" : "See Available Slots"}
+                </Button>
               </div>
 
-              <div className="mt-3 space-y-2">
+              {isExpanded && (
+                <div className="mt-3 space-y-2">
+                {isSlotsLoading ? (
+                  <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="size-4 animate-spin" />
+                    Loading slots...
+                  </div>
+                ) : (
+                <>
                 {slots.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No slots available for this doctor.</p>
                 ) : (
@@ -208,7 +230,10 @@ export default function PatientBookingPage() {
                     </div>
                   ))
                 )}
+                </>
+                )}
               </div>
+              )}
             </article>
           );
         })}
