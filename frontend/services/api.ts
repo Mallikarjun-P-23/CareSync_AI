@@ -23,6 +23,15 @@ export interface DoctorAvailabilitySlot {
   status: string;
 }
 
+export interface DoctorFeedbackItem {
+  id: string;
+  doctor_id: string;
+  patient_id?: string | null;
+  rating: number;
+  comment?: string | null;
+  created_at: string;
+}
+
 export interface DoctorManagedSlot extends DoctorAvailabilitySlot {
   reserved_until?: string | null;
   reserved_by?: string | null;
@@ -153,6 +162,41 @@ export async function listDoctorAvailability(doctorId: string) {
     throw new Error(`Failed to fetch availability (${response.status}): ${detail}`);
   }
   return response.json() as Promise<DoctorAvailabilitySlot[]>;
+}
+
+export async function listDoctorFeedback(doctorId: string, limit = 20) {
+  const response = await fetch(`${API_URL}/api/doctors/${doctorId}/feedback?limit=${limit}`);
+  if (!response.ok) {
+    const detail = await response.text().catch(() => response.statusText);
+    throw new Error(`Failed to fetch doctor feedback (${response.status}): ${detail}`);
+  }
+  return response.json() as Promise<DoctorFeedbackItem[]>;
+}
+
+export async function submitDoctorFeedback(
+  doctorId: string,
+  payload: { rating: number; comment?: string; patient_id?: string },
+) {
+  const params = new URLSearchParams();
+  if (payload.patient_id) params.set("patient_id", payload.patient_id);
+  const qs = params.toString();
+
+  const response = await fetch(`${API_URL}/api/doctors/${doctorId}/feedback${qs ? `?${qs}` : ""}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      rating: payload.rating,
+      comment: payload.comment ?? null,
+      tags: [],
+    }),
+  });
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => response.statusText);
+    throw new Error(`Failed to submit feedback (${response.status}): ${detail}`);
+  }
+
+  return response.json();
 }
 
 export async function listDoctorSlots(

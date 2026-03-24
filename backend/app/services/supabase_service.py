@@ -1,8 +1,9 @@
+from __future__ import annotations
+
 """
 Supabase service — thin wrapper around the supabase-py client.
 Provides typed helpers for workflows, patients, and call_logs tables.
 """
-from __future__ import annotations
 
 import secrets
 from datetime import datetime, timezone
@@ -449,6 +450,60 @@ def delete_doctor_slot(doctor_id: str, slot_id: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Doctor Feedback helpers
+# ---------------------------------------------------------------------------
+
+def create_doctor_feedback(
+    doctor_id: str,
+    rating: int,
+    comment: str | None = None,
+    patient_id: str | None = None,
+) -> dict:
+    sb = get_supabase()
+    feedback = (
+        sb.table("doctor_feedback")
+        .insert(
+            {
+                "doctor_id": doctor_id,
+                "patient_id": patient_id,
+                "rating": rating,
+                "comment": comment,
+            }
+        )
+        .execute()
+        .data[0]
+    )
+
+    feedbacks = (
+        sb.table("doctor_feedback")
+        .select("rating")
+        .eq("doctor_id", doctor_id)
+        .execute()
+        .data
+    )
+    ratings = [f["rating"] for f in feedbacks if f.get("rating") is not None]
+    if ratings:
+        avg = sum(ratings) / len(ratings)
+        count = len(ratings)
+        sb.table("doctors").update({"rating_avg": avg, "rating_count": count}).eq("id", doctor_id).execute()
+
+    return feedback
+
+
+def list_doctor_feedback(doctor_id: str, limit: int = 20) -> list[dict]:
+    sb = get_supabase()
+    return (
+        sb.table("doctor_feedback")
+        .select("id,doctor_id,patient_id,rating,comment,created_at")
+        .eq("doctor_id", doctor_id)
+        .order("created_at", desc=True)
+        .limit(limit)
+        .execute()
+        .data
+    )
+
+
+# ---------------------------------------------------------------------------
 # Patient portal helpers (registration/login/dashboard)
 # ---------------------------------------------------------------------------
 
@@ -797,15 +852,22 @@ def book_slot_for_patient_portal(
         if not reserved:
             return None
 
-    booked = sb.rpc(
-        "book_reserved_slot",
-        {
-            "p_slot_id": slot_id,
-            "p_patient_id": patient_id,
-            "p_consultation_type": consultation_type,
-            "p_notes": notes,
-        },
-    ).execute()
+    try:
+        booked = sb.rpc(
+            "book_reserved_slot",
+            {
+                "p_slot_id": slot_id,
+                "p_patient_id": patient_id,
+                "p_consultation_type": consultation_type,
+                "p_notes": notes,
+            },
+        ).execute()
+    except Exception as exc:
+        # Race condition: another request may have already booked this slot.
+        msg = str(exc)
+        if "uq_appointments_slot_id" in msg or "duplicate key value" in msg or "23505" in msg:
+            return None
+        raise
 
     appointment = _first_row(booked.data)
     if not appointment:

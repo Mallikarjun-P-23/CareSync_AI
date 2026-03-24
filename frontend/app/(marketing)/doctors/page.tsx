@@ -236,6 +236,10 @@ export default function DoctorsPage() {
                       <span className="inline-flex items-center gap-1"><Languages className="size-3.5" />{doctor.language}</span>
                       <span className="inline-flex items-center gap-1"><CircleDollarSign className="size-3.5" />${doctor.fee}</span>
                       <span className="inline-flex items-center gap-1"><User className="size-3.5" />{doctor.consultation_type}</span>
+                      <span className="inline-flex items-center gap-1">
+                        <span className="text-yellow-400">★</span>
+                        {doctor.rating_avg?.toFixed(1) || "0.0"} ({doctor.rating_count || 0})
+                      </span>
                     </div>
                   </div>
 
@@ -288,6 +292,7 @@ export default function DoctorsPage() {
               </article>
             );
           })}
+
         </div>
       )}
     </section>

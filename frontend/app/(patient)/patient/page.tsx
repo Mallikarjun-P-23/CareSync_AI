@@ -6,17 +6,20 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   cancelPatientPortalAppointment,
   listDoctors,
+  listDoctorFeedback,
   listReports,
   registerPatientPortal,
   getPatientPortalMe,
   listPatientPortalAppointments,
   type DoctorListItem,
+  type DoctorFeedbackItem,
   type PatientPortalAppointment,
   type PatientPortalProfile,
   type ReportItem,
 } from "@/services/api";
 import { Button } from "@/components/ui/button";
 import { CalendarClock, FileText, Loader2 } from "lucide-react";
+import FeedbackForm from "@/components/FeedbackForm";
 
 function formatDateTime(value?: string | null) {
   if (!value) return "—";
@@ -32,6 +35,8 @@ export default function PatientPortalPage() {
   const [appointments, setAppointments] = useState<PatientPortalAppointment[]>([]);
   const [reports, setReports] = useState<ReportItem[]>([]);
   const [doctors, setDoctors] = useState<DoctorListItem[]>([]);
+  const [feedbackByDoctor, setFeedbackByDoctor] = useState<Record<string, DoctorFeedbackItem[]>>({});
+  const [feedbackDoctorId, setFeedbackDoctorId] = useState<string | null>(null);
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -46,6 +51,23 @@ export default function PatientPortalPage() {
   const loadDoctors = useCallback(async () => {
     const rows = await listDoctors();
     setDoctors(rows);
+
+    if (rows.length > 0) {
+      const feedbackPairs = await Promise.all(
+        rows.map(async (doctor) => {
+          try {
+            const feedbackRows = await listDoctorFeedback(doctor.id, 5);
+            return [doctor.id, feedbackRows] as const;
+          } catch {
+            return [doctor.id, []] as const;
+          }
+        }),
+      );
+      setFeedbackByDoctor(Object.fromEntries(feedbackPairs));
+    } else {
+      setFeedbackByDoctor({});
+    }
+
     if (!selectedDoctorId && rows.length > 0) {
       setSelectedDoctorId(rows[0].id);
     }
@@ -324,9 +346,76 @@ export default function PatientPortalPage() {
             )}
           </div>
 
+          <div className="rounded-xl border border-border bg-card p-4">
+            <h2 className="mb-3 text-sm font-semibold">Doctors and Feedback</h2>
+            {doctors.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No doctors available right now.</p>
+            ) : (
+              <div className="space-y-3">
+                {doctors.map((doctor) => {
+                  const feedbackRows = feedbackByDoctor[doctor.id] || [];
+                  return (
+                    <div key={doctor.id} className="rounded-lg border border-border/70 bg-background p-3">
+                      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                        <div>
+                          <p className="text-sm font-medium">{doctor.name}</p>
+                          <p className="text-xs text-muted-foreground">{doctor.specialty} • {doctor.language}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Rating: {doctor.rating_avg?.toFixed(1) || "0.0"} ({doctor.rating_count || 0})
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Link href={`/patient/booking?doctorId=${doctor.id}`}>
+                            <Button size="sm" variant="outline">Begin See Available Slots</Button>
+                          </Link>
+                          <Button size="sm" onClick={() => setFeedbackDoctorId(doctor.id)}>Add Feedback</Button>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 space-y-2">
+                        {feedbackRows.length === 0 ? (
+                          <p className="text-xs text-muted-foreground">No feedback yet for this doctor.</p>
+                        ) : (
+                          feedbackRows.map((item) => (
+                            <div key={item.id} className="rounded-md border border-border/70 px-3 py-2 text-xs">
+                              <p className="font-medium">{item.rating}/5</p>
+                              <p className="text-muted-foreground">{item.comment || "No comment"}</p>
+                              <p className="mt-1 text-[11px] text-muted-foreground">{formatDateTime(item.created_at)}</p>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           {message && (
             <div className="mt-4 rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
               {message}
+            </div>
+          )}
+
+          {feedbackDoctorId && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+              <div className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-2xl">
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold">Add Feedback</h3>
+                  <Button size="sm" variant="ghost" onClick={() => setFeedbackDoctorId(null)}>Close</Button>
+                </div>
+                <FeedbackForm
+                  doctorId={feedbackDoctorId}
+                  patientId={profile?.id}
+                  onSubmitted={async () => {
+                    const rows = await listDoctorFeedback(feedbackDoctorId, 5).catch(() => []);
+                    setFeedbackByDoctor((prev) => ({ ...prev, [feedbackDoctorId]: rows }));
+                    await loadDoctors().catch(() => undefined);
+                    setFeedbackDoctorId(null);
+                  }}
+                />
+              </div>
             </div>
           )}
         </section>

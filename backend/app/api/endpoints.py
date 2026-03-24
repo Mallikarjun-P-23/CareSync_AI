@@ -1,7 +1,7 @@
+from __future__ import annotations
 """
 FastAPI route endpoints for MedTrigger.
 """
-from __future__ import annotations
 
 import asyncio
 import logging
@@ -344,6 +344,25 @@ class FeedbackResponse(BaseModel):
     comment: str | None = None
     tags: list[str] = Field(default_factory=list)
     created_at: str
+
+
+@router.post("/doctors/{doctor_id}/feedback", status_code=201)
+async def submit_doctor_feedback(doctor_id: str, body: FeedbackCreateRequest, request: Request):
+    patient_id = request.query_params.get("patient_id")
+    feedback = await _run_db_call(
+        db.create_doctor_feedback,
+        doctor_id,
+        body.rating,
+        body.comment,
+        patient_id,
+    )
+    return feedback
+
+
+@router.get("/doctors/{doctor_id}/feedback")
+async def list_doctor_feedback(doctor_id: str, limit: int = 20):
+    doctor = await _resolve_doctor_or_404_async(doctor_id)
+    return await _run_db_call(db.list_doctor_feedback, doctor["id"], limit)
 
 
 def _validate_consultation_access(appointment: dict, actor_role: str, actor_id: str) -> tuple[str, str]:
