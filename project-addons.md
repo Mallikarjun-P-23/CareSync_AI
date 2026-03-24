@@ -23,20 +23,20 @@ Create a web platform where patients can check doctor availability and consult v
 Timebox: 0:00 to 0:15
 
 Checklist
-- [ ] Create migration for new entities:
-	- [ ] `doctors`
-	- [ ] `availability_slots`
-	- [ ] `appointments`
-	- [ ] `consultation_rooms`
-	- [ ] `consultation_messages`
-	- [ ] `consultation_feedback`
-- [ ] Add indexes on `doctor_id`, `slot_start`, `appointment_id`
-- [ ] Add unique/locking safety for slot booking (one slot cannot be booked twice)
-- [ ] Define response/request payload shapes for all new APIs before coding
+- [x] Create migration for new entities:
+	- [x] `doctors`
+	- [x] `availability_slots`
+	- [x] `appointments`
+	- [x] `consultation_rooms`
+	- [x] `consultation_messages`
+	- [x] `consultation_feedback`
+- [x] Add indexes on `doctor_id`, `slot_start`, `appointment_id`
+- [x] Add unique/locking safety for slot booking (one slot cannot be booked twice)
+- [x] Define response/request payload shapes for all new APIs before coding
 
 Definition of Done
 - [ ] Migration SQL runs successfully in Supabase
-- [ ] Constraints prevent duplicate bookings
+- [x] Constraints prevent duplicate bookings
 
 ---
 

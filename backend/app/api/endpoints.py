@@ -119,6 +119,98 @@ class LabEventRequest(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Phase 0 API contracts (pre-implementation schemas)
+# ---------------------------------------------------------------------------
+
+class DoctorListQuery(BaseModel):
+    specialty: str | None = None
+    language: str | None = None
+    consultation_type: str | None = None
+    available_now: bool | None = None
+
+
+class DoctorListItem(BaseModel):
+    id: str
+    name: str
+    specialty: str
+    language: str
+    consultation_type: str
+    fee: float
+    rating_avg: float
+    rating_count: int
+    available_now: bool = False
+    next_slot_start: str | None = None
+
+
+class DoctorAvailabilitySlot(BaseModel):
+    id: str
+    doctor_id: str
+    slot_start: str
+    slot_end: str
+    status: str
+
+
+class ReserveSlotRequest(BaseModel):
+    patient_id: str
+    hold_minutes: int = Field(default=10, ge=1, le=30)
+
+
+class ReserveSlotResponse(BaseModel):
+    slot_id: str
+    status: str
+    reserved_until: str | None = None
+
+
+class CreateAppointmentRequest(BaseModel):
+    slot_id: str
+    patient_id: str
+    consultation_type: str = "video"
+    notes: str | None = None
+
+
+class AppointmentResponse(BaseModel):
+    id: str
+    doctor_id: str
+    patient_id: str
+    slot_id: str
+    status: str
+    consultation_type: str
+    created_at: str
+
+
+class ConsultationRoomResponse(BaseModel):
+    id: str
+    appointment_id: str
+    provider: str
+    room_name: str
+    room_url: str | None = None
+
+
+class ReminderJobResponse(BaseModel):
+    appointment_id: str
+    reminder_type: str
+    scheduled_for: str
+    status: str
+
+
+class FeedbackCreateRequest(BaseModel):
+    rating: int = Field(ge=1, le=5)
+    comment: str | None = None
+    tags: list[str] = Field(default_factory=list)
+
+
+class FeedbackResponse(BaseModel):
+    id: str
+    appointment_id: str
+    doctor_id: str
+    patient_id: str
+    rating: int
+    comment: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    created_at: str
+
+
+# ---------------------------------------------------------------------------
 # Patient endpoints
 # ---------------------------------------------------------------------------
 
