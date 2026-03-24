@@ -14,7 +14,9 @@ import {
   type DoctorListItem,
 } from "@/services/api";
 import { Button } from "@/components/ui/button";
-import { CalendarClock, Loader2 } from "lucide-react";
+import { CalendarClock, Loader2, Stethoscope, UserRound } from "lucide-react";
+
+type DoctorSlotsMap = Record<string, DoctorAvailabilitySlot[]>;
 
 function formatDateTime(value?: string | null) {
   if (!value) return "—";
@@ -31,15 +33,19 @@ export default function PatientBookingPage() {
 
   const [loading, setLoading] = useState(true);
   const [doctors, setDoctors] = useState<DoctorListItem[]>([]);
-  const [selectedDoctorId, setSelectedDoctorId] = useState("");
-  const [slots, setSlots] = useState<DoctorAvailabilitySlot[]>([]);
+  const [doctorSlots, setDoctorSlots] = useState<DoctorSlotsMap>({});
   const [consultationType, setConsultationType] = useState("video");
   const [bookingSlotId, setBookingSlotId] = useState<string | null>(null);
   const [status, setStatus] = useState<{ type: "success" | "error" | "info"; text: string } | null>(null);
 
-  const loadSlots = useCallback(async (doctorId: string) => {
-    const data = await listDoctorAvailability(doctorId);
-    setSlots(data);
+  const loadAllDoctorSlots = useCallback(async (doctorRows: DoctorListItem[]) => {
+    const slotPairs = await Promise.all(
+      doctorRows.map(async (doctor) => {
+        const rows = await listDoctorAvailability(doctor.id);
+        return [doctor.id, rows] as const;
+      }),
+    );
+    setDoctorSlots(Object.fromEntries(slotPairs));
   }, []);
 
   useEffect(() => {
@@ -58,19 +64,12 @@ export default function PatientBookingPage() {
         if (!profile) {
           setStatus({ type: "info", text: "Complete patient registration first in the portal." });
           setDoctors(doctorRows);
-          if (doctorRows[0]) {
-            setSelectedDoctorId(doctorRows[0].id);
-            await loadSlots(doctorRows[0].id);
-          }
+          await loadAllDoctorSlots(doctorRows);
           return;
         }
 
         setDoctors(doctorRows);
-        const primaryDoctor = doctorRows.find((d) => d.id === profile.doctor_id) || doctorRows[0];
-        if (primaryDoctor) {
-          setSelectedDoctorId(primaryDoctor.id);
-          await loadSlots(primaryDoctor.id);
-        }
+        await loadAllDoctorSlots(doctorRows);
       })
       .catch((err) => {
         const text = err instanceof Error ? err.message : "Failed to load booking data.";
@@ -83,14 +82,7 @@ export default function PatientBookingPage() {
     return () => {
       active = false;
     };
-  }, [authUserId, isAuthenticated, loadSlots]);
-
-  useEffect(() => {
-    if (!selectedDoctorId) return;
-    loadSlots(selectedDoctorId).catch(() => {
-      setStatus({ type: "error", text: "Could not load doctor availability." });
-    });
-  }, [selectedDoctorId, loadSlots]);
+  }, [authUserId, isAuthenticated, loadAllDoctorSlots]);
 
   const handleBook = useCallback(async (slotId: string) => {
     if (!authUserId) return;
@@ -112,17 +104,15 @@ export default function PatientBookingPage() {
         });
         setStatus({ type: "success", text: "Appointment booked. Confirmation notification created." });
       }
-      if (selectedDoctorId) {
-        const refreshed = await listDoctorAvailability(selectedDoctorId);
-        setSlots(refreshed);
-      }
+      const refreshed = await listDoctorAvailability(doctorId);
+      setDoctorSlots((prev) => ({ ...prev, [doctorId]: refreshed }));
     } catch (err) {
       const text = err instanceof Error ? err.message : "Booking failed.";
       setStatus({ type: "error", text });
     } finally {
       setBookingSlotId(null);
     }
-  }, [appointmentId, authUserId, consultationType, selectedDoctorId]);
+  }, [appointmentId, authUserId, consultationType]);
 
   if (isLoading || loading) {
     return (
@@ -160,19 +150,7 @@ export default function PatientBookingPage() {
         <Link href="/patient"><Button variant="outline">Back to Portal</Button></Link>
       </div>
 
-      <div className="grid gap-4 rounded-xl border border-border bg-card p-4 md:grid-cols-2">
-        <select
-          value={selectedDoctorId}
-          onChange={(e) => setSelectedDoctorId(e.target.value)}
-          className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-        >
-          {doctors.map((doctor) => (
-            <option key={doctor.id} value={doctor.id}>
-              {doctor.name} - {doctor.specialty}
-            </option>
-          ))}
-        </select>
-
+      <div className="grid gap-4 rounded-xl border border-border bg-card p-4 md:grid-cols-1">
         <select
           value={consultationType}
           onChange={(e) => setConsultationType(e.target.value)}
@@ -190,29 +168,50 @@ export default function PatientBookingPage() {
         </div>
       )}
 
-      <div className="mt-6 rounded-xl border border-border bg-card p-4">
-        <h2 className="mb-3 text-sm font-semibold">Available Slots</h2>
-        {slots.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No slots available for this doctor.</p>
-        ) : (
-          <div className="space-y-2">
-            {slots.map((slot) => (
-              <div key={slot.id} className="flex flex-col gap-2 rounded-md border border-border px-3 py-2 md:flex-row md:items-center md:justify-between">
-                <span className="inline-flex items-center gap-1 text-sm text-muted-foreground">
-                  <CalendarClock className="size-4" />
-                  {formatDateTime(slot.slot_start)}
+      <div className="mt-6 space-y-4">
+        {doctors.map((doctor) => {
+          const slots = doctorSlots[doctor.id] || [];
+
+          return (
+            <article key={doctor.id} className="rounded-xl border border-border bg-card p-4">
+              <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-sm font-semibold">{doctor.name}</p>
+                  <div className="mt-1 flex flex-wrap gap-3 text-xs text-muted-foreground">
+                    <span className="inline-flex items-center gap-1"><Stethoscope className="size-3.5" />{doctor.specialty}</span>
+                    <span className="inline-flex items-center gap-1"><UserRound className="size-3.5" />{doctor.language}</span>
+                    <span className="rounded-full bg-muted px-2 py-0.5 uppercase tracking-wide">{doctor.consultation_type}</span>
+                  </div>
+                </div>
+                <span className={`rounded-full px-2 py-1 text-xs ${doctor.available_now ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground"}`}>
+                  {doctor.available_now ? "Available now" : "Next slot available"}
                 </span>
-                <Button
-                  size="sm"
-                  disabled={bookingSlotId === slot.id}
-                  onClick={() => handleBook(slot.id)}
-                >
-                  {bookingSlotId === slot.id ? "Saving..." : appointmentId ? "Reschedule Here" : "Confirm Booking"}
-                </Button>
               </div>
-            ))}
-          </div>
-        )}
+
+              <div className="mt-3 space-y-2">
+                {slots.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No slots available for this doctor.</p>
+                ) : (
+                  slots.map((slot) => (
+                    <div key={slot.id} className="flex flex-col gap-2 rounded-md border border-border px-3 py-2 md:flex-row md:items-center md:justify-between">
+                      <span className="inline-flex items-center gap-1 text-sm text-muted-foreground">
+                        <CalendarClock className="size-4" />
+                        {formatDateTime(slot.slot_start)}
+                      </span>
+                      <Button
+                        size="sm"
+                        disabled={bookingSlotId === slot.id}
+                        onClick={() => handleBook(slot.id, doctor.id)}
+                      >
+                        {bookingSlotId === slot.id ? "Saving..." : appointmentId ? "Reschedule Here" : "Confirm Booking"}
+                      </Button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </article>
+          );
+        })}
       </div>
     </div>
   );

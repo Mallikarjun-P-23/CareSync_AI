@@ -35,7 +35,7 @@ Checklist
 - [x] Define response/request payload shapes for all new APIs before coding
 
 Definition of Done
-- [ ] Migration SQL runs successfully in Supabase
+- [x] Migration SQL runs successfully in Supabase
 - [x] Constraints prevent duplicate bookings
 
 ---

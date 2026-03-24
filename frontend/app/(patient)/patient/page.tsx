@@ -6,20 +6,17 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   cancelPatientPortalAppointment,
   listDoctors,
-  listDoctorAvailability,
+  listReports,
   registerPatientPortal,
   getPatientPortalMe,
   listPatientPortalAppointments,
-  bookPatientPortalSlot,
-  type DoctorAvailabilitySlot,
   type DoctorListItem,
   type PatientPortalAppointment,
   type PatientPortalProfile,
+  type ReportItem,
 } from "@/services/api";
 import { Button } from "@/components/ui/button";
-import { CalendarClock, Loader2, Stethoscope, User } from "lucide-react";
-
-type AvailabilityMap = Record<string, DoctorAvailabilitySlot[]>;
+import { CalendarClock, FileText, Loader2 } from "lucide-react";
 
 function formatDateTime(value?: string | null) {
   if (!value) return "—";
@@ -33,18 +30,15 @@ export default function PatientPortalPage() {
 
   const [profile, setProfile] = useState<PatientPortalProfile | null>(null);
   const [appointments, setAppointments] = useState<PatientPortalAppointment[]>([]);
+  const [reports, setReports] = useState<ReportItem[]>([]);
   const [doctors, setDoctors] = useState<DoctorListItem[]>([]);
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [selectedDoctorId, setSelectedDoctorId] = useState("");
 
-  const [expandedDoctorId, setExpandedDoctorId] = useState<string | null>(null);
-  const [availabilityByDoctor, setAvailabilityByDoctor] = useState<AvailabilityMap>({});
-
   const [loading, setLoading] = useState(true);
   const [registering, setRegistering] = useState(false);
-  const [bookingSlotId, setBookingSlotId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   const authUserId = user?.sub ?? "";
@@ -66,10 +60,15 @@ export default function PatientPortalPage() {
     if (me) {
       setName(me.name || "");
       setPhone(me.phone || "");
-      const appts = await listPatientPortalAppointments(authUserId);
+      const [appts, reportRows] = await Promise.all([
+        listPatientPortalAppointments(authUserId),
+        listReports(me.id),
+      ]);
       setAppointments(appts);
+      setReports(reportRows);
     } else {
       setAppointments([]);
+      setReports([]);
       setName(user?.name || "");
       setPhone("");
     }
@@ -100,24 +99,6 @@ export default function PatientPortalPage() {
     };
   }, [authUserId, isAuthenticated, loadDoctors, loadProfileAndAppointments]);
 
-  useEffect(() => {
-    if (!isAuthenticated || !authUserId) return;
-
-    const interval = setInterval(async () => {
-      try {
-        await loadDoctors();
-        if (expandedDoctorId) {
-          const slots = await listDoctorAvailability(expandedDoctorId);
-          setAvailabilityByDoctor((prev) => ({ ...prev, [expandedDoctorId]: slots }));
-        }
-      } catch {
-        // Ignore background refresh errors; main actions still surface errors.
-      }
-    }, 10000);
-
-    return () => clearInterval(interval);
-  }, [authUserId, expandedDoctorId, isAuthenticated, loadDoctors]);
-
   const handleRegister = useCallback(async () => {
     if (!authUserId || !user?.email) return;
     if (!name.trim() || !phone.trim() || !selectedDoctorId) {
@@ -136,8 +117,12 @@ export default function PatientPortalPage() {
         doctor_id: selectedDoctorId,
       });
       setProfile(created);
-      const appts = await listPatientPortalAppointments(authUserId);
+      const [appts, reportRows] = await Promise.all([
+        listPatientPortalAppointments(authUserId),
+        listReports(created.id),
+      ]);
       setAppointments(appts);
+      setReports(reportRows);
       setMessage("Patient profile registered successfully.");
     } catch (err) {
       const text = err instanceof Error ? err.message : "Registration failed.";
@@ -147,61 +132,10 @@ export default function PatientPortalPage() {
     }
   }, [authUserId, name, phone, selectedDoctorId, user?.email]);
 
-  const handleToggleAvailability = useCallback(
-    async (doctorId: string) => {
-      setMessage(null);
-      if (expandedDoctorId === doctorId) {
-        setExpandedDoctorId(null);
-        return;
-      }
-      setExpandedDoctorId(doctorId);
-
-      if (availabilityByDoctor[doctorId]) return;
-
-      try {
-        const slots = await listDoctorAvailability(doctorId);
-        setAvailabilityByDoctor((prev) => ({ ...prev, [doctorId]: slots }));
-      } catch (err) {
-        const text = err instanceof Error ? err.message : "Could not load slots.";
-        setMessage(text);
-      }
-    },
-    [availabilityByDoctor, expandedDoctorId],
+  const upcomingAppointments = useMemo(
+    () => appointments.filter((appt) => !["cancelled", "completed", "no_show"].includes(appt.status)),
+    [appointments],
   );
-
-  const handleBookSlot = useCallback(
-    async (slotId: string, doctorId: string) => {
-      if (!authUserId) return;
-      if (!profile) {
-        setMessage("Please complete patient registration first.");
-        return;
-      }
-
-      setBookingSlotId(slotId);
-      setMessage(null);
-      try {
-        await bookPatientPortalSlot(slotId, {
-          auth_user_id: authUserId,
-          consultation_type: "video",
-        });
-        const [appts, slots] = await Promise.all([
-          listPatientPortalAppointments(authUserId),
-          listDoctorAvailability(doctorId),
-        ]);
-        setAppointments(appts);
-        setAvailabilityByDoctor((prev) => ({ ...prev, [doctorId]: slots }));
-        setMessage("Appointment booked successfully.");
-      } catch (err) {
-        const text = err instanceof Error ? err.message : "Booking failed.";
-        setMessage(text);
-      } finally {
-        setBookingSlotId(null);
-      }
-    },
-    [authUserId, profile],
-  );
-
-  const upcomingAppointments = useMemo(() => appointments, [appointments]);
 
   const handleCancelAppointment = useCallback(
     async (appointmentId: string) => {
@@ -276,7 +210,18 @@ export default function PatientPortalPage() {
       </header>
 
       <main className="mx-auto grid max-w-7xl gap-6 px-6 py-6 md:grid-cols-3">
-        <section className="md:col-span-1">
+        <section className="md:col-span-1 space-y-4">
+          <div className="rounded-xl border border-border bg-card p-4">
+            <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Quick Actions</p>
+            <h2 className="mt-2 text-base font-semibold">Plan Your Next Visit</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Book appointments with available doctors and choose from open slots.
+            </p>
+            <Link href="/patient/booking" className="mt-3 block">
+              <Button className="w-full">Book Appointment</Button>
+            </Link>
+          </div>
+
           <div className="rounded-xl border border-border bg-card p-4">
             <h2 className="mb-3 text-sm font-semibold">Patient Registration</h2>
 
@@ -285,6 +230,7 @@ export default function PatientPortalPage() {
                 <p><span className="text-muted-foreground">Name:</span> {profile.name}</p>
                 <p><span className="text-muted-foreground">Email:</span> {profile.email}</p>
                 <p><span className="text-muted-foreground">Phone:</span> {profile.phone}</p>
+                <p><span className="text-muted-foreground">Primary doctor:</span> {doctors.find((d) => d.id === profile.doctor_id)?.name || "Assigned"}</p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -318,11 +264,13 @@ export default function PatientPortalPage() {
               </div>
             )}
           </div>
+        </section>
 
-          <div className="mt-4 rounded-xl border border-border bg-card p-4">
-            <h2 className="mb-3 text-sm font-semibold">My Appointments</h2>
+        <section className="md:col-span-2 space-y-4">
+          <div className="rounded-xl border border-border bg-card p-4">
+            <h2 className="mb-3 text-sm font-semibold">Upcoming Appointments</h2>
             {upcomingAppointments.length === 0 ? (
-              <p className="text-xs text-muted-foreground">No appointments yet.</p>
+              <p className="text-xs text-muted-foreground">No upcoming appointments yet.</p>
             ) : (
               <div className="space-y-2">
                 {upcomingAppointments.map((appt) => (
@@ -346,64 +294,31 @@ export default function PatientPortalPage() {
               </div>
             )}
           </div>
-        </section>
 
-        <section className="md:col-span-2">
           <div className="rounded-xl border border-border bg-card p-4">
-            <h2 className="mb-3 text-sm font-semibold">Doctors</h2>
-            <div className="space-y-3">
-              {doctors.map((doctor) => {
-                const slots = availabilityByDoctor[doctor.id] || [];
-                const expanded = expandedDoctorId === doctor.id;
+            <h2 className="mb-3 text-sm font-semibold">My Reports</h2>
+            {reports.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No reports available yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {reports.slice(0, 12).map((report) => {
+                  const reportTitle =
+                    (report.report_data?.title as string | undefined)
+                    || (report.report_data?.summary as string | undefined)
+                    || "Clinical Report";
 
-                return (
-                  <article key={doctor.id} className="rounded-lg border border-border/70 bg-background p-3">
-                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                      <div>
-                        <p className="text-sm font-medium">{doctor.name}</p>
-                        <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                          <span className="inline-flex items-center gap-1"><Stethoscope className="size-3" />{doctor.specialty}</span>
-                          <span className="inline-flex items-center gap-1"><User className="size-3" />{doctor.language}</span>
-                          <span>{doctor.consultation_type}</span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className={`rounded-full px-2 py-0.5 text-[11px] ${doctor.available_now ? "bg-success/10 text-success" : "bg-muted text-muted-foreground"}`}>
-                          {doctor.available_now ? "Available now" : `Next: ${formatDateTime(doctor.next_slot_start)}`}
-                        </span>
-                        <Button size="sm" variant="outline" onClick={() => handleToggleAvailability(doctor.id)}>
-                          {expanded ? "Hide slots" : "View slots"}
-                        </Button>
-                      </div>
+                  return (
+                    <div key={report.id} className="rounded-lg border border-border/70 bg-background p-3 text-xs">
+                      <p className="inline-flex items-center gap-1 font-medium">
+                        <FileText className="size-3.5" />
+                        {reportTitle}
+                      </p>
+                      <p className="mt-1 text-muted-foreground">Generated on {formatDateTime(report.created_at)}</p>
                     </div>
-
-                    {expanded && (
-                      <div className="mt-3 space-y-2">
-                        {slots.length === 0 ? (
-                          <p className="text-xs text-muted-foreground">No upcoming slots.</p>
-                        ) : (
-                          slots.map((slot) => (
-                            <div key={slot.id} className="flex flex-col gap-2 rounded-md border border-border px-3 py-2 md:flex-row md:items-center md:justify-between">
-                              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                                <CalendarClock className="size-3.5" />
-                                {formatDateTime(slot.slot_start)}
-                              </span>
-                              <Button
-                                size="sm"
-                                disabled={bookingSlotId === slot.id || !profile}
-                                onClick={() => handleBookSlot(slot.id, doctor.id)}
-                              >
-                                {bookingSlotId === slot.id ? "Booking..." : "Book Appointment"}
-                              </Button>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    )}
-                  </article>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {message && (

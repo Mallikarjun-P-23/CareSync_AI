@@ -69,6 +69,15 @@ export interface DoctorAppointmentItem {
   slot_end?: string;
 }
 
+export interface ReportItem {
+  id: string;
+  workflow_id?: string | null;
+  patient_id?: string | null;
+  call_log_id?: string | null;
+  report_data?: Record<string, unknown>;
+  created_at: string;
+}
+
 // ---------------------------------------------------------------------------
 // Lab event
 // ---------------------------------------------------------------------------
@@ -765,7 +774,7 @@ export async function listReports(patientId?: string, workflowId?: string) {
   if (workflowId) params.set('workflow_id', workflowId);
   const qs = params.toString();
   const response = await fetch(`${API_URL}/api/reports${qs ? `?${qs}` : ''}`);
-  return response.json();
+  return response.json() as Promise<ReportItem[]>;
 }
 
 export async function getReport(reportId: string) {
