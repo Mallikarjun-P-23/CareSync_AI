@@ -1,6 +1,6 @@
 "use client";
 
-import { useAuth0 } from "@auth0/auth0-react";
+import { useLocalAuth } from "@/lib/local-auth";
 import {
   Search,
   Bell,
@@ -43,7 +43,7 @@ const PAGES: SearchResult[] = [
 ];
 
 export function Topbar() {
-  const { user, logout } = useAuth0();
+  const { user, logout } = useLocalAuth();
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);

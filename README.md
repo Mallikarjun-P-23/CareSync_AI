@@ -453,7 +453,7 @@ See `render.yaml` for Render configuration.
 | **AI Calls** | ElevenLabs ConvAI + Twilio → patient phone → webhook → call_log + calendar |
 | **PDF** | pdfplumber extraction → patient + lab data → workflow context |
 
-Clarus automates patient outreach from clinical events to AI voice calls and calendar booking.
+CareSync AI automates patient outreach from clinical events to AI voice calls and calendar booking.
 
 ---
 

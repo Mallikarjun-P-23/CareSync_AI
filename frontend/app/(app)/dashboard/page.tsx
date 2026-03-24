@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useAuth0 } from "@auth0/auth0-react";
+import { useLocalAuth } from "@/lib/local-auth";
 import {
   listPatients,
   createPatient,
@@ -60,7 +60,7 @@ export default function DashboardPage() {
   const [uploadingPdf, setUploadingPdf] = useState(false);
 
   const router = useRouter();
-  const { user } = useAuth0();
+  const { user } = useLocalAuth();
   const doctorId = user?.sub;
 
   const fetchPatients = useCallback(async () => {
@@ -483,7 +483,7 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Right: Clarus Insights + RAF + stepper */}
+          {/* Right: CareSync AI Insights + RAF + stepper */}
           <div className="space-y-4">
             <div className="rounded-xl border border-primary/20 bg-card p-4">
               <div className="mb-4 flex items-center gap-2">
@@ -491,7 +491,7 @@ export default function DashboardPage() {
                   <Lightbulb className="size-4 text-primary" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-semibold">Clarus Insights</h3>
+                  <h3 className="text-sm font-semibold">CareSync AI Insights</h3>
                   <p className="text-[11px] text-muted-foreground">{reviewNeeded.length} gap{reviewNeeded.length !== 1 ? "s" : ""} identified</p>
                 </div>
               </div>

@@ -6,9 +6,11 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 
-export default function SignIn() {
-  const { loginWithPassword, isLoading } = useLocalAuth();
+export default function PatientSignUpPage() {
+  const { registerWithPassword, isLoading } = useLocalAuth();
   const router = useRouter();
+  const [username, setUsername] = useState("");
+  const [mobile, setMobile] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -19,10 +21,10 @@ export default function SignIn() {
     setSubmitting(true);
     setError(null);
     try {
-      await loginWithPassword({ role: "doctor", email, password });
-      router.push("/dashboard");
+      await registerWithPassword({ role: "patient", email, password, username, mobile });
+      router.push("/patient");
     } catch (err) {
-      const text = err instanceof Error ? err.message : "Login failed";
+      const text = err instanceof Error ? err.message : "Signup failed";
       setError(text.replace(/^\{"detail":"|"\}$/g, ""));
     } finally {
       setSubmitting(false);
@@ -36,10 +38,24 @@ export default function SignIn() {
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <h1 className="text-xl font-semibold">Doctor Login</h1>
-        <p className="text-sm text-muted-foreground">Use your email and password.</p>
+        <h1 className="text-xl font-semibold">Patient Signup</h1>
+        <p className="text-sm text-muted-foreground">Create account with email, username, and mobile.</p>
       </div>
 
+      <input
+        value={username}
+        onChange={(e) => setUsername(e.target.value)}
+        placeholder="Username"
+        required
+        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+      />
+      <input
+        value={mobile}
+        onChange={(e) => setMobile(e.target.value)}
+        placeholder="Mobile Number"
+        required
+        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+      />
       <input
         type="email"
         value={email}
@@ -54,17 +70,18 @@ export default function SignIn() {
         onChange={(e) => setPassword(e.target.value)}
         placeholder="Password"
         required
+        minLength={6}
         className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
       />
 
       {error && <p className="text-xs text-destructive">{error}</p>}
 
       <Button type="submit" disabled={submitting}>
-        {submitting ? "Logging in..." : "Login"}
+        {submitting ? "Creating account..." : "Create Account"}
       </Button>
 
       <p className="text-xs text-muted-foreground">
-        No account? <Link href="/signUp" className="underline">Create doctor account</Link>
+        Already registered? <Link href="/patient-signIn" className="underline">Patient login</Link>
       </p>
     </form>
   );

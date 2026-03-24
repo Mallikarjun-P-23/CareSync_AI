@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useAuth0 } from "@auth0/auth0-react";
+import { useLocalAuth } from "@/lib/local-auth";
 import { listCallLogs } from "@/services/api";
 
 import { cn } from "@/lib/utils";
@@ -27,7 +27,7 @@ const statusConfig: Record<string, { label: string; icon: React.ComponentType<{ 
 };
 
 export default function CallsPage() {
-  const { user } = useAuth0();
+  const { user } = useLocalAuth();
   const doctorId = user?.sub;
 
   const [callLogs, setCallLogs] = useState<any[]>([]);

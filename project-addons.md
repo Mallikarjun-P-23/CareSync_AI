@@ -23,20 +23,20 @@ Create a web platform where patients can check doctor availability and consult v
 Timebox: 0:00 to 0:15
 
 Checklist
-- [ ] Create migration for new entities:
-	- [ ] `doctors`
-	- [ ] `availability_slots`
-	- [ ] `appointments`
-	- [ ] `consultation_rooms`
-	- [ ] `consultation_messages`
-	- [ ] `consultation_feedback`
-- [ ] Add indexes on `doctor_id`, `slot_start`, `appointment_id`
-- [ ] Add unique/locking safety for slot booking (one slot cannot be booked twice)
-- [ ] Define response/request payload shapes for all new APIs before coding
+- [x] Create migration for new entities:
+	- [x] `doctors`
+	- [x] `availability_slots`
+	- [x] `appointments`
+	- [x] `consultation_rooms`
+	- [x] `consultation_messages`
+	- [x] `consultation_feedback`
+- [x] Add indexes on `doctor_id`, `slot_start`, `appointment_id`
+- [x] Add unique/locking safety for slot booking (one slot cannot be booked twice)
+- [x] Define response/request payload shapes for all new APIs before coding
 
 Definition of Done
-- [ ] Migration SQL runs successfully in Supabase
-- [ ] Constraints prevent duplicate bookings
+- [x] Migration SQL runs successfully in Supabase
+- [x] Constraints prevent duplicate bookings
 
 ---
 
@@ -44,23 +44,23 @@ Definition of Done
 Timebox: 0:15 to 1:10
 
 Checklist
-- [ ] Backend DB helpers in `backend/app/services/supabase_service.py`
-	- [ ] list doctors (with filters)
-	- [ ] list doctor availability
-	- [ ] reserve slot
-- [ ] Backend APIs in `backend/app/api/endpoints.py`
-	- [ ] `GET /api/doctors`
-	- [ ] `GET /api/doctors/{doctor_id}/availability`
-	- [ ] `POST /api/slots/{slot_id}/reserve`
-- [ ] Frontend API client functions in `frontend/services/api.ts`
-- [ ] Patient-facing doctor directory page (public route)
-	- [ ] Filter by specialty/language/consultation type
-	- [ ] Show `Available now` or `Next slot`
+- [x] Backend DB helpers in `backend/app/services/supabase_service.py`
+	- [x] list doctors (with filters)
+	- [x] list doctor availability
+	- [x] reserve slot
+- [x] Backend APIs in `backend/app/api/endpoints.py`
+	- [x] `GET /api/doctors`
+	- [x] `GET /api/doctors/{doctor_id}/availability`
+	- [x] `POST /api/slots/{slot_id}/reserve`
+- [x] Frontend API client functions in `frontend/services/api.ts`
+- [x] Patient-facing doctor directory page (public route)
+	- [x] Filter by specialty/language/consultation type
+	- [x] Show `Available now` or `Next slot`
 
 Definition of Done
-- [ ] Doctor list renders from backend
-- [ ] Availability endpoint returns slots correctly
-- [ ] Reserve slot endpoint updates slot status
+- [x] Doctor list renders from backend
+- [x] Availability endpoint returns slots correctly
+- [x] Reserve slot endpoint updates slot status
 
 ---
 
@@ -68,18 +68,18 @@ Definition of Done
 Timebox: 1:10 to 2:00
 
 Checklist
-- [ ] Create booking flow page with date-time picker
-- [ ] Implement atomic booking flow:
-	- [ ] Reserve slot
-	- [ ] Create appointment row
-	- [ ] Mark slot as booked
-- [ ] Add confirmation notification creation at booking time
-- [ ] Add success/failure states on UI
+- [x] Create booking flow page with date-time picker
+- [x] Implement atomic booking flow:
+	- [x] Reserve slot
+	- [x] Create appointment row
+	- [x] Mark slot as booked
+- [x] Add confirmation notification creation at booking time
+- [x] Add success/failure states on UI
 
 Definition of Done
-- [ ] User can book from available slot
-- [ ] Double-book attempt fails safely
-- [ ] Appointment and notification rows are created
+- [x] User can book from available slot
+- [x] Double-book attempt fails safely
+- [x] Appointment and notification rows are created
 
 ---
 
@@ -88,16 +88,16 @@ Timebox: 2:00 to 2:45
 
 Checklist
 - [ ] Add managed WebRTC SDK (recommended: Daily for speed)
-- [ ] Create consultation room per appointment
+- [x] Create consultation room per appointment
 - [ ] Add consultation route/page:
 	- [ ] Join video room
-	- [ ] Basic chat pane
-- [ ] Persist chat messages to `consultation_messages`
+	- [x] Basic chat pane
+- [x] Persist chat messages to `consultation_messages`
 
 Definition of Done
-- [ ] Appointment opens consultation room
+- [x] Appointment opens consultation room
 - [ ] Video join is working
-- [ ] Chat messages save and display
+- [x] Chat messages save and display
 
 ---
 

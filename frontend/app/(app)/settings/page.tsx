@@ -1,11 +1,11 @@
 "use client";
 
-import { useAuth0 } from "@auth0/auth0-react";
+import { useLocalAuth } from "@/lib/local-auth";
 import { Button } from "@/components/ui/button";
 import { User, Mail, Shield, LogOut, ExternalLink } from "lucide-react";
 
 export default function SettingsPage() {
-  const { user, isAuthenticated, logout } = useAuth0();
+  const { user, isAuthenticated, logout } = useLocalAuth();
 
   return (
     <div className="space-y-6 max-w-2xl">
@@ -20,7 +20,7 @@ export default function SettingsPage() {
       <div className="rounded-xl border border-border bg-card">
         <div className="border-b border-border px-5 py-4">
           <h3 className="text-sm font-semibold">Profile</h3>
-          <p className="text-xs text-muted-foreground mt-0.5">Your account information from Auth0.</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Your local account information.</p>
         </div>
         <div className="p-5 space-y-4">
           {isAuthenticated && user ? (
@@ -45,8 +45,8 @@ export default function SettingsPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <InfoRow icon={User} label="Name" value={user.name || "—"} />
                 <InfoRow icon={Mail} label="Email" value={user.email || "—"} />
-                <InfoRow icon={Shield} label="Auth0 ID" value={user.sub || "—"} />
-                <InfoRow icon={ExternalLink} label="Provider" value={user.sub?.split("|")[0] || "—"} />
+                <InfoRow icon={Shield} label="Account ID" value={user.sub || "—"} />
+                <InfoRow icon={ExternalLink} label="Role" value={user.role || "—"} />
               </div>
             </>
           ) : (
@@ -61,9 +61,9 @@ export default function SettingsPage() {
           <h3 className="text-sm font-semibold">Application</h3>
         </div>
         <div className="p-5 space-y-3">
-          <InfoRow icon={Shield} label="App" value="Clarus — Clinical Workflow Automation" />
+          <InfoRow icon={Shield} label="App" value="CareSync AI — Clinical Workflow Automation" />
           <InfoRow icon={ExternalLink} label="API" value={process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"} />
-          <InfoRow icon={ExternalLink} label="Auth0 Domain" value={process.env.NEXT_PUBLIC_AUTH0_DOMAIN || "—"} />
+          <InfoRow icon={ExternalLink} label="Authentication" value="Local email/password" />
         </div>
       </div>
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, use } from "react";
-import { useAuth0 } from "@auth0/auth0-react";
+import { useLocalAuth } from "@/lib/local-auth";
 import {
   getPatient,
   updatePatient,
@@ -61,7 +61,7 @@ export default function PatientDetailPage({
   params: Promise<{ patientId: string }>;
 }) {
   const { patientId } = use(params);
-  const { user } = useAuth0();
+  const { user } = useLocalAuth();
 
   const [patient, setPatient] = useState<any>(null);
   const [conditions, setConditions] = useState<any[]>([]);
@@ -769,14 +769,14 @@ export default function PatientDetailPage({
 
         {/* Right column — Insights */}
         <div className="space-y-4">
-          {/* Clarus Insights */}
+          {/* CareSync AI Insights */}
           <div className="rounded-xl border border-primary/20 bg-card p-4">
             <div className="mb-4 flex items-center gap-2">
               <div className="flex size-7 items-center justify-center rounded-lg bg-primary/10">
                 <Lightbulb className="size-4 text-primary" />
               </div>
               <div>
-                <h3 className="text-sm font-semibold">Clarus Insights</h3>
+                <h3 className="text-sm font-semibold">CareSync AI Insights</h3>
                 <p className="text-[11px] text-muted-foreground">
                   {reviewNeeded.length} gap{reviewNeeded.length !== 1 ? "s" : ""} identified
                 </p>

@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 import { Menu, X, ArrowUpRight } from "lucide-react";
 
 const navLinks = [
+  { href: "/doctors", label: "Doctors" },
   { href: "/about", label: "About" },
   { href: "/features", label: "Product" },
   { href: "/pricing", label: "Pricing" },
@@ -82,6 +83,12 @@ export function Navbar() {
             Log In
             <ArrowUpRight className="h-3.5 w-3.5" />
           </Link>
+          <Link
+            href="/patient-signIn"
+            className="inline-flex items-center gap-1.5 rounded-full border border-border px-4 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+          >
+            Patient Portal
+          </Link>
         </div>
 
         {/* Mobile menu button */}
@@ -120,6 +127,13 @@ export function Navbar() {
               >
                 Log In
                 <ArrowUpRight className="h-3.5 w-3.5" />
+              </Link>
+              <Link
+                href="/patient-signIn"
+                className="ml-2 inline-flex items-center gap-1.5 rounded-full border border-border px-4 py-2 text-sm font-medium text-foreground"
+                onClick={() => setMobileOpen(false)}
+              >
+                Patient Portal
               </Link>
             </div>
           </div>

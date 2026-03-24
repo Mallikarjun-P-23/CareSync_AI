@@ -27,7 +27,7 @@ export function StatsSection() {
               From trigger fired to patient contacted
             </h2>
             <p className="mt-3 max-w-md text-muted-foreground">
-              The industry average is 2–4 hours. Most clinics using Clarus see
+              The industry average is 2–4 hours. Most clinics using CareSync AI see
               first contact in under two minutes.
             </p>
           </div>
