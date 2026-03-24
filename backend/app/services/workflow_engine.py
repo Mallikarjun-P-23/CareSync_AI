@@ -449,13 +449,23 @@ async def _handle_call_patient(node: dict, context: dict) -> tuple[bool, dict]:
                 "workflow_id": context.get("workflow_id", ""),
             },
         )
-        conversation_id = result.get("conversation_id", "")
-        context["conversation_id"] = conversation_id
+        conversation_id = result.get("conversation_id") or ""
+        call_sid = result.get("callSid") or result.get("call_sid") or ""
 
+        # conversation_id is assigned by ElevenLabs *after* the call connects.
+        # It arrives via webhook (POST /api/elevenlabs/webhook) once the call
+        # is active. Store callSid as an immediate reference in the meantime.
+        context["conversation_id"] = conversation_id
+        context["call_sid"] = call_sid
+
+        msg = (
+            f"ElevenLabs call initiated — callSid={call_sid}"
+            if not conversation_id
+            else f"ElevenLabs call initiated — conversation_id={conversation_id}"
+        )
         return True, _step_log(
-            node, "ok",
-            f"ElevenLabs call initiated — conversation_id={conversation_id}",
-            extra={"conversation_id": conversation_id},
+            node, "ok", msg,
+            extra={"conversation_id": conversation_id or None, "call_sid": call_sid},
         )
     except Exception as exc:
         logger.exception("ElevenLabs call failed")
@@ -826,7 +836,9 @@ async def _handle_create_report(node: dict, context: dict) -> tuple[bool, dict]:
         )
     except Exception as exc:
         logger.exception("Failed to create report")
-        return False, _step_log(node, "error", f"Report creation error: {exc}")
+        # Surface the raw Supabase/PostgREST error message clearly
+        detail = getattr(exc, "message", None) or str(exc)
+        return False, _step_log(node, "error", f"Report creation error: {detail}")
 
 
 async def _handle_send_summary_to_doctor(node: dict, context: dict) -> tuple[bool, dict]:

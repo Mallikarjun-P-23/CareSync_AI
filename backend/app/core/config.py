@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     elevenlabs_api_key: str = ""
     elevenlabs_agent_id: str = ""
     elevenlabs_phone_number_id: str = ""
+    elevenlabs_webhook_secret: str = ""  # wsec_... from ElevenLabs dashboard
 
     # Auth0
     auth0_domain: str = ""
