@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { useLocalAuth } from "@/lib/local-auth";
-import { useCallback, useEffect, useState } from "react";
 import {
   bookPatientPortalSlot,
   getPatientPortalMe,
@@ -26,6 +26,23 @@ function formatDateTime(value?: string | null) {
 }
 
 export default function PatientBookingPage() {
+  return (
+    <Suspense
+      fallback={(
+        <div className="mx-auto flex min-h-screen max-w-5xl items-center justify-center px-6">
+          <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" />
+            Loading booking flow...
+          </div>
+        </div>
+      )}
+    >
+      <PatientBookingContent />
+    </Suspense>
+  );
+}
+
+function PatientBookingContent() {
   const { user, isAuthenticated, isLoading } = useLocalAuth();
   const searchParams = useSearchParams();
   const authUserId = user?.sub ?? "";
